@@ -18,6 +18,9 @@ jest.mock("@actual-app/api", () => {
       .mockResolvedValue([
         { id: "local-budget-id", cloudFileId: "budget-123" },
       ]),
+    exportBudget: jest
+      .fn()
+      .mockResolvedValue({ data: Buffer.from("backup-data") }),
     internal: { send },
   };
 });
@@ -45,6 +48,9 @@ describe("runBackup", () => {
       path.join(budgetDir, "local-budget-id", "db.sqlite"),
       "",
     );
+    await fs.mkdir(path.join(budgetDir, "local-budget-id", "backups"), {
+      recursive: true,
+    });
     await fs.mkdir(path.join(budgetDir, "local-budget-id", "backups"), {
       recursive: true,
     });
