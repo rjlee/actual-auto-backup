@@ -89,7 +89,15 @@ async function exportBudgetBuffer(config) {
   const resolvedBudgetId = budgetId.trim();
   logger.info({ budgetId: resolvedBudgetId }, "resolved budget id for export");
 
-  await api.loadBudget({ id: resolvedBudgetId });
+  try {
+    await api.loadBudget({ id: resolvedBudgetId });
+  } catch (err) {
+    logger.warn(
+      { err, budgetId: resolvedBudgetId, syncId },
+      "first loadBudget attempt failed, trying sync id",
+    );
+    await api.loadBudget({ id: syncId });
+  }
 
   const exportResult = await api.internal.send("export-budget");
   if (exportResult?.error) {
