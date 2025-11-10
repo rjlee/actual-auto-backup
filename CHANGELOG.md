@@ -1,3 +1,12 @@
+## [1.0.2](https://github.com/rjlee/actual-auto-backup/compare/v1.0.1...v1.0.2) (2025-11-10)
+
+
+### Bug Fixes
+
+* allow relative paths in url ([def3234](https://github.com/rjlee/actual-auto-backup/commit/def323400b00cd47ff5265c5b1bb8d0ed8f75829))
+* fixing formatting error ([a1efbe7](https://github.com/rjlee/actual-auto-backup/commit/a1efbe77e71560f4a4da71d01c1f834bbd7f1a9a))
+* fixing lint error ([c5655d3](https://github.com/rjlee/actual-auto-backup/commit/c5655d329cb57daf67f7a2059c1e7ae00358fa55))
+
 ## [1.0.1](https://github.com/rjlee/actual-auto-backup/compare/v1.0.0...v1.0.1) (2025-11-10)
 
 
