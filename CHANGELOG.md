@@ -1,3 +1,10 @@
+## [1.0.21](https://github.com/rjlee/actual-auto-backup/compare/v1.0.20...v1.0.21) (2025-11-10)
+
+
+### Bug Fixes
+
+* fix badges in ui ([8fece7f](https://github.com/rjlee/actual-auto-backup/commit/8fece7fc2f932efc3ddef86727cda63b5946ef1b))
+
 ## [1.0.20](https://github.com/rjlee/actual-auto-backup/compare/v1.0.19...v1.0.20) (2025-11-10)
 
 
