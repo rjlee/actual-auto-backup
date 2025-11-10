@@ -17,6 +17,15 @@ async function exportBudgetBuffer(config) {
   const { serverUrl, password, syncId, encryptionKey, budgetDir } =
     config.actual;
   await ensureDir(budgetDir);
+  // Reset any previous budget state so we don't reuse local metadata
+  try {
+    await api.closeBudget();
+  } catch (err) {
+    logger.debug(
+      { err },
+      "closeBudget before init failed (expected if unused)",
+    );
+  }
   await api.init({
     dataDir: budgetDir,
     serverURL: serverUrl,
@@ -37,17 +46,6 @@ async function exportBudgetBuffer(config) {
 
   logger.info({ downloadResult }, "downloadBudget result");
 
-  const budgets = await api.getBudgets();
-  logger.info(
-    {
-      budgetCount: Array.isArray(budgets) ? budgets.length : 0,
-      downloadId: downloadResult?.id,
-      downloadNestedId: downloadResult?.id?.id,
-      downloadBudgetId: downloadResult?.budgetId,
-    },
-    "fetched budgets after download",
-  );
-
   let budgetId = syncId;
   if (downloadResult) {
     if (typeof downloadResult.id === "string" && downloadResult.id.length > 0) {
@@ -66,21 +64,20 @@ async function exportBudgetBuffer(config) {
     }
   }
 
-  if (Array.isArray(budgets)) {
-    const byCloud = budgets.find((b) => b?.cloudFileId === syncId);
-    if (byCloud?.id) {
-      budgetId = byCloud.id.trim();
-    } else {
-      const byId = budgets.find((b) => b?.id === syncId);
-      if (byId?.id) {
-        budgetId = byId.id.trim();
-      }
-    }
-  }
-
   const resolvedBudgetId =
     typeof budgetId === "string" && budgetId.length > 0 ? budgetId : syncId;
   logger.info({ budgetId: resolvedBudgetId }, "resolved budget id for export");
+
+  const dbFile = path.join(budgetDir, resolvedBudgetId, "db.sqlite");
+  const exists = await fs
+    .stat(dbFile)
+    .then(() => true)
+    .catch(() => false);
+  if (!exists) {
+    throw new Error(
+      `Budget directory missing after download: ${dbFile}. Ensure ACTUAL_SYNC_ID is correct and accessible.`,
+    );
+  }
 
   try {
     await api.loadBudget(resolvedBudgetId);
