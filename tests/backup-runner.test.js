@@ -80,7 +80,7 @@ describe("runBackup", () => {
 
     expect(api.downloadBudget).toHaveBeenCalled();
     const files = await fs.readdir(config.local.outputDir);
-    expect(files.some((file) => file.endsWith(".zip"))).toBe(true);
+    expect(files).toEqual([expect.stringMatching(/^local-budget-id-.*\.zip$/)]);
     const marker = await fs.readFile(
       path.join(tmpDir, ".last-success"),
       "utf8",

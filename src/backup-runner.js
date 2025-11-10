@@ -16,11 +16,16 @@ async function ensureDir(dir) {
   await fs.mkdir(dir, { recursive: true });
 }
 
-async function exportBudgetBuffer(config) {
-  const { serverUrl, password, syncId, encryptionKey, budgetDir } =
-    config.actual;
-  await ensureDir(budgetDir);
-  // Reset any previous budget state so we don't reuse local metadata
+async function pathExists(target) {
+  try {
+    await fs.access(target);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function resetActualSession() {
   try {
     await api.closeBudget();
   } catch (err) {
@@ -29,6 +34,168 @@ async function exportBudgetBuffer(config) {
       "closeBudget before init failed (expected if unused)",
     );
   }
+}
+
+async function safeGetBudgets() {
+  try {
+    return await api.getBudgets();
+  } catch (err) {
+    logger.warn({ err }, "getBudgets failed after download");
+    return null;
+  }
+}
+
+function logBudgetSummary(budgets) {
+  if (!Array.isArray(budgets)) {
+    return;
+  }
+  logger.info(
+    {
+      budgets: budgets.map((b) => ({
+        id: b?.id,
+        cloudFileId: b?.cloudFileId,
+        name: b?.name,
+      })),
+    },
+    "available budgets",
+  );
+}
+
+function extractBudgetIdFromDownload(downloadResult) {
+  if (typeof downloadResult?.id === "string" && downloadResult.id.length > 0) {
+    return downloadResult.id.trim();
+  }
+  if (
+    downloadResult?.id &&
+    typeof downloadResult.id.id === "string" &&
+    downloadResult.id.id.length > 0
+  ) {
+    return downloadResult.id.id.trim();
+  }
+  if (
+    typeof downloadResult?.budgetId === "string" &&
+    downloadResult.budgetId.length > 0
+  ) {
+    return downloadResult.budgetId.trim();
+  }
+  return null;
+}
+
+function collectCandidateBudgetIds(syncId, downloadResult, budgets) {
+  const raw = [];
+  const push = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (trimmed.length === 0) return;
+    raw.push(trimmed);
+  };
+
+  push(extractBudgetIdFromDownload(downloadResult));
+
+  if (Array.isArray(budgets) && budgets.length > 0) {
+    const byCloud = budgets.find((b) => b?.cloudFileId === syncId)?.id;
+    push(byCloud);
+
+    const byId = budgets.find((b) => b?.id === syncId)?.id;
+    push(byId);
+
+    budgets.forEach((b) => push(b?.id));
+  }
+
+  push(syncId);
+
+  const seen = new Set();
+  return raw.filter((candidate) => {
+    if (seen.has(candidate)) {
+      return false;
+    }
+    seen.add(candidate);
+    return true;
+  });
+}
+
+async function resolveBudgetResources({
+  syncId,
+  downloadResult,
+  budgets,
+  budgetDir,
+}) {
+  const candidates = collectCandidateBudgetIds(syncId, downloadResult, budgets);
+
+  for (const candidate of candidates) {
+    const dbFile = path.join(budgetDir, candidate, "db.sqlite");
+    if (await pathExists(dbFile)) {
+      return { budgetId: candidate, dbFile, dbExists: true };
+    }
+  }
+
+  const localEntries = await fs.readdir(budgetDir).catch(() => []);
+  for (const entry of localEntries) {
+    const dbFile = path.join(budgetDir, entry, "db.sqlite");
+    if (await pathExists(dbFile)) {
+      return { budgetId: entry.trim(), dbFile, dbExists: true };
+    }
+  }
+
+  const fallbackId = candidates[0] || syncId || "budget";
+  return {
+    budgetId: fallbackId,
+    dbFile: path.join(budgetDir, fallbackId, "db.sqlite"),
+    dbExists: false,
+  };
+}
+
+async function createSanitizedDatabaseBuffer(dbFile) {
+  const tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "actual-backup-"));
+  const tmpDbPath = path.join(tmpBase, "db.sqlite");
+  try {
+    await fs.copyFile(dbFile, tmpDbPath);
+    const db = sqlite3(tmpDbPath);
+    db.exec(`
+      DELETE FROM kvcache;
+      DELETE FROM kvcache_key;
+    `);
+    db.close();
+    return await fs.readFile(tmpDbPath);
+  } finally {
+    await fs.rm(tmpBase, { recursive: true, force: true });
+  }
+}
+
+async function readMetadataBuffer(budgetDir, budgetId) {
+  const metadataPath = path.join(budgetDir, budgetId, "metadata.json");
+  try {
+    const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+    metadata.resetClock = true;
+    return Buffer.from(JSON.stringify(metadata));
+  } catch (err) {
+    logger.warn({ err }, "failed to read metadata.json");
+    return null;
+  }
+}
+
+function buildZipBuffer(dbContent, metadataBuffer) {
+  const zip = new AdmZip();
+  zip.addFile("db.sqlite", dbContent);
+  if (metadataBuffer) {
+    zip.addFile("metadata.json", metadataBuffer);
+  }
+  return zip.toBuffer();
+}
+
+function withErrorHandling(promiseFactory, message, loggerInstance) {
+  return promiseFactory().catch((err) => {
+    loggerInstance.error({ err }, message);
+    throw err;
+  });
+}
+
+async function exportBudgetBuffer(config) {
+  const { serverUrl, password, syncId, encryptionKey, budgetDir } =
+    config.actual;
+  await ensureDir(budgetDir);
+  // Reset any previous budget state so we don't reuse local metadata
+  await resetActualSession();
   await api.init({
     dataDir: budgetDir,
     serverURL: serverUrl,
@@ -49,138 +216,35 @@ async function exportBudgetBuffer(config) {
 
   logger.info({ downloadResult }, "downloadBudget result");
 
-  let budgetId = syncId;
-  if (downloadResult) {
-    if (typeof downloadResult.id === "string" && downloadResult.id.length > 0) {
-      budgetId = downloadResult.id.trim();
-    } else if (
-      downloadResult.id &&
-      typeof downloadResult.id.id === "string" &&
-      downloadResult.id.id.length > 0
-    ) {
-      budgetId = downloadResult.id.id.trim();
-    } else if (
-      typeof downloadResult.budgetId === "string" &&
-      downloadResult.budgetId.length > 0
-    ) {
-      budgetId = downloadResult.budgetId.trim();
-    }
-  }
+  const budgets = await safeGetBudgets();
+  logBudgetSummary(budgets);
 
-  let resolvedBudgetId =
-    typeof budgetId === "string" && budgetId.length > 0 ? budgetId : syncId;
-
-  const budgets = await api.getBudgets().catch((err) => {
-    logger.warn({ err }, "getBudgets failed after download");
-    return null;
+  const { budgetId, dbFile, dbExists } = await resolveBudgetResources({
+    syncId,
+    downloadResult,
+    budgets,
+    budgetDir,
   });
 
-  if (Array.isArray(budgets)) {
-    logger.info(
-      {
-        budgets: budgets.map((b) => ({
-          id: b?.id,
-          cloudFileId: b?.cloudFileId,
-          name: b?.name,
-        })),
-      },
-      "available budgets",
-    );
-  }
-
-  if (Array.isArray(budgets)) {
-    const byCloud = budgets.find((b) => b?.cloudFileId === syncId);
-    if (byCloud?.id) {
-      resolvedBudgetId = byCloud.id.trim();
-    } else {
-      const byId = budgets.find((b) => b?.id === syncId);
-      if (byId?.id) {
-        resolvedBudgetId = byId.id.trim();
-      } else if (budgets.length === 1 && budgets[0]?.id) {
-        resolvedBudgetId = budgets[0].id.trim();
-      }
-    }
-  }
-
-  const fileExists = async (filePath) =>
-    fs
-      .stat(filePath)
-      .then(() => true)
-      .catch(() => false);
-
-  let dbFile = path.join(budgetDir, resolvedBudgetId, "db.sqlite");
-  let exists = await fileExists(dbFile);
-
-  if (!exists && Array.isArray(budgets)) {
-    for (const entry of budgets) {
-      if (!entry?.id) continue;
-      const candidate = path.join(budgetDir, entry.id, "db.sqlite");
-      if (await fileExists(candidate)) {
-        resolvedBudgetId = entry.id.trim();
-        dbFile = candidate;
-        exists = true;
-        break;
-      }
-    }
-  }
-
-  if (!exists) {
-    const dirs = await fs.readdir(budgetDir).catch(() => []);
-    for (const entry of dirs) {
-      const candidate = path.join(budgetDir, entry, "db.sqlite");
-      if (await fileExists(candidate)) {
-        resolvedBudgetId = entry.trim();
-        dbFile = candidate;
-        exists = true;
-        break;
-      }
-    }
-  }
-
-  if (!exists) {
+  if (!dbExists) {
     logger.warn(
-      { dbFile, syncId, resolvedBudgetId },
+      { dbFile, syncId, resolvedBudgetId: budgetId },
       "budget directory missing after download, attempting load without local cache",
     );
   }
 
-  logger.info(
-    { budgetId: resolvedBudgetId, dbFile },
-    "loading budget for export",
-  );
+  logger.info({ budgetId, dbFile }, "loading budget for export");
 
-  await api.loadBudget(resolvedBudgetId);
+  await api.loadBudget(budgetId);
 
-  const tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "actual-backup-"));
-  const tmpDbPath = path.join(tmpBase, "db.sqlite");
-  await fs.copyFile(dbFile, tmpDbPath);
+  const dbContent = await createSanitizedDatabaseBuffer(dbFile);
+  const metadataBuffer = await readMetadataBuffer(budgetDir, budgetId);
+  const buffer = buildZipBuffer(dbContent, metadataBuffer);
 
-  let dbContent;
-  try {
-    const db = sqlite3(tmpDbPath);
-    db.exec(`
-      DELETE FROM kvcache;
-      DELETE FROM kvcache_key;
-    `);
-    db.close();
-    dbContent = await fs.readFile(tmpDbPath);
-  } finally {
-    await fs.rm(tmpBase, { recursive: true, force: true });
-  }
-
-  const zip = new AdmZip();
-  zip.addFile("db.sqlite", dbContent);
-
-  const metadataPath = path.join(budgetDir, resolvedBudgetId, "metadata.json");
-  try {
-    const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
-    metadata.resetClock = true;
-    zip.addFile("metadata.json", Buffer.from(JSON.stringify(metadata)));
-  } catch (err) {
-    logger.warn({ err }, "failed to read metadata.json");
-  }
-
-  return zip.toBuffer();
+  return {
+    buffer,
+    budgetId,
+  };
 }
 
 async function markSuccess(outputDir) {
@@ -195,8 +259,11 @@ async function markSuccess(outputDir) {
 async function runBackup(config, tokenStore) {
   logger.info("starting backup job");
   let buffer;
+  let resolvedBudgetId;
   try {
-    buffer = await exportBudgetBuffer(config);
+    const result = await exportBudgetBuffer(config);
+    buffer = result.buffer;
+    resolvedBudgetId = result.budgetId;
   } catch (err) {
     logger.error({ err }, "failed to export budget");
     throw err;
@@ -208,21 +275,55 @@ async function runBackup(config, tokenStore) {
     }
   }
 
-  const tasks = [];
-  const budgetId = config.actual.syncId;
-
+  const budgetId = resolvedBudgetId || config.actual.syncId;
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
+
+  const tasks = await createDestinationTasks({
+    buffer,
+    budgetId,
+    timestamp,
+    config,
+    tokenStore,
+    logger,
+  });
+
+  if (tasks.length === 0) {
+    logger.warn("no destinations enabled; skipping");
+  } else {
+    await Promise.all(tasks);
+  }
+
+  if (!config.local.enabled) {
+    const markerTarget = config.local.outputDir || config.actual.budgetDir;
+    await ensureDir(markerTarget);
+    await markSuccess(markerTarget);
+  }
+
+  logger.info("backup job complete");
+}
+
+async function createDestinationTasks({
+  buffer,
+  budgetId,
+  timestamp,
+  config,
+  tokenStore,
+  logger: loggerInstance,
+}) {
+  const tasks = [];
 
   if (config.local.enabled) {
     tasks.push(
-      writeLocalBackup(
-        buffer,
-        { ...config.local, budgetId, timestamp },
-        logger,
-      ).catch((err) => {
-        logger.error({ err }, "local backup failed");
-        throw err;
-      }),
+      withErrorHandling(
+        () =>
+          writeLocalBackup(
+            buffer,
+            { ...config.local, budgetId, timestamp },
+            loggerInstance,
+          ),
+        "local backup failed",
+        loggerInstance,
+      ),
     );
   }
 
@@ -232,6 +333,7 @@ async function runBackup(config, tokenStore) {
       budgetId,
       timestamp,
     };
+
     if (config.googleDrive.mode === "service-account") {
       if (!config.googleDrive.credentialsPath) {
         throw new Error(
@@ -239,7 +341,7 @@ async function runBackup(config, tokenStore) {
         );
       }
       if (!config.googleDrive.folderId) {
-        logger.warn(
+        loggerInstance.warn(
           "GDRIVE_FOLDER_ID not set; using /Actual Budget Backups root",
         );
       }
@@ -270,11 +372,13 @@ async function runBackup(config, tokenStore) {
         },
       };
     }
+
     tasks.push(
-      uploadToDrive(buffer, driveOptions, logger).catch((err) => {
-        logger.error({ err }, "google drive upload failed");
-        throw err;
-      }),
+      withErrorHandling(
+        () => uploadToDrive(buffer, driveOptions, loggerInstance),
+        "google drive upload failed",
+        loggerInstance,
+      ),
     );
   }
 
@@ -283,18 +387,20 @@ async function runBackup(config, tokenStore) {
       throw new Error("ENABLE_S3=true but S3_BUCKET is not set");
     }
     tasks.push(
-      uploadToS3(
-        buffer,
-        {
-          ...config.s3,
-          budgetId,
-          timestamp,
-        },
-        logger,
-      ).catch((err) => {
-        logger.error({ err }, "s3 upload failed");
-        throw err;
-      }),
+      withErrorHandling(
+        () =>
+          uploadToS3(
+            buffer,
+            {
+              ...config.s3,
+              budgetId,
+              timestamp,
+            },
+            loggerInstance,
+          ),
+        "s3 upload failed",
+        loggerInstance,
+      ),
     );
   }
 
@@ -304,9 +410,8 @@ async function runBackup(config, tokenStore) {
       budgetId,
       timestamp,
     };
-    if (config.dropbox.accessToken) {
-      // static token provided via env
-    } else {
+
+    if (!config.dropbox.accessToken) {
       if (!config.dropbox.appKey || !config.dropbox.appSecret) {
         throw new Error(
           "Dropbox OAuth requires DROPBOX_APP_KEY and DROPBOX_APP_SECRET",
@@ -328,11 +433,13 @@ async function runBackup(config, tokenStore) {
         },
       };
     }
+
     tasks.push(
-      uploadToDropbox(buffer, dropboxOptions, logger).catch((err) => {
-        logger.error({ err }, "dropbox upload failed");
-        throw err;
-      }),
+      withErrorHandling(
+        () => uploadToDropbox(buffer, dropboxOptions, loggerInstance),
+        "dropbox upload failed",
+        loggerInstance,
+      ),
     );
   }
 
@@ -341,33 +448,24 @@ async function runBackup(config, tokenStore) {
       throw new Error("ENABLE_WEBDAV=true but WEBDAV_URL is not set");
     }
     tasks.push(
-      uploadToWebDAV(
-        buffer,
-        {
-          ...config.webdav,
-          budgetId,
-          timestamp,
-        },
-        logger,
-      ).catch((err) => {
-        logger.error({ err }, "webdav upload failed");
-        throw err;
-      }),
+      withErrorHandling(
+        () =>
+          uploadToWebDAV(
+            buffer,
+            {
+              ...config.webdav,
+              budgetId,
+              timestamp,
+            },
+            loggerInstance,
+          ),
+        "webdav upload failed",
+        loggerInstance,
+      ),
     );
   }
 
-  if (tasks.length === 0) {
-    logger.warn("no destinations enabled; skipping");
-  } else {
-    await Promise.all(tasks);
-  }
-
-  if (!config.local.enabled) {
-    await ensureDir(config.local.outputDir);
-    await markSuccess(config.local.outputDir || config.actual.budgetDir);
-  }
-
-  logger.info("backup job complete");
+  return tasks;
 }
 
 module.exports = {
