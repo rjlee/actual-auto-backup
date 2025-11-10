@@ -74,20 +74,13 @@ async function exportBudgetBuffer(config) {
     .then(() => true)
     .catch(() => false);
   if (!exists) {
-    throw new Error(
-      `Budget directory missing after download: ${dbFile}. Ensure ACTUAL_SYNC_ID is correct and accessible.`,
+    logger.warn(
+      { dbFile, syncId, resolvedBudgetId },
+      "budget directory missing after download, attempting load without local cache",
     );
   }
 
-  try {
-    await api.loadBudget(resolvedBudgetId);
-  } catch (err) {
-    logger.warn(
-      { err, budgetId: resolvedBudgetId, syncId },
-      "first loadBudget attempt failed, trying sync id",
-    );
-    await api.loadBudget(syncId);
-  }
+  await api.loadBudget(resolvedBudgetId);
 
   const exportResult = await api.internal.send("export-budget");
   if (exportResult?.error) {
