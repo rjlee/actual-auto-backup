@@ -28,12 +28,19 @@ async function exportBudgetBuffer(config) {
     downloadOptions.password = encryptionKey;
   }
 
-  const result = await api.downloadBudget(syncId, downloadOptions);
-  if (result?.error) {
-    throw new Error(`downloadBudget failed: ${JSON.stringify(result.error)}`);
+  const downloadResult = await api.downloadBudget(syncId, downloadOptions);
+  if (downloadResult?.error) {
+    throw new Error(
+      `downloadBudget failed: ${JSON.stringify(downloadResult.error)}`,
+    );
   }
 
-  await api.loadBudget({ id: syncId });
+  const budgetId =
+    typeof downloadResult?.id === "string" && downloadResult.id.length > 0
+      ? downloadResult.id
+      : syncId;
+
+  await api.loadBudget({ id: budgetId });
 
   const exportResult = await api.internal.send("export-budget");
   if (exportResult?.error) {

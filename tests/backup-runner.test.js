@@ -8,7 +8,7 @@ jest.mock("@actual-app/api", () => {
     .mockResolvedValue({ data: Buffer.from("backup-data") });
   return {
     init: jest.fn().mockResolvedValue(),
-    downloadBudget: jest.fn().mockResolvedValue({}),
+    downloadBudget: jest.fn().mockResolvedValue({ id: "local-budget-id" }),
     loadBudget: jest.fn().mockResolvedValue({}),
     shutdown: jest.fn().mockResolvedValue(),
     internal: { send },
