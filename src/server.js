@@ -248,7 +248,7 @@ function createRouter(config, tokenStore, runBackupFn) {
     }
   });
 
-  app.get("*", (req, res) => {
+  app.use((req, res) => {
     res.sendFile(path.join(publicDir, "index.html"));
   });
 
