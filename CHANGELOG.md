@@ -1,3 +1,10 @@
+## [1.0.22](https://github.com/rjlee/actual-auto-backup/compare/v1.0.21...v1.0.22) (2025-11-10)
+
+
+### Bug Fixes
+
+* add backup info and tidy layout ([c2f81cb](https://github.com/rjlee/actual-auto-backup/commit/c2f81cbe078b2478b44129ae3d63dd0de53fbcaf))
+
 ## [1.0.21](https://github.com/rjlee/actual-auto-backup/compare/v1.0.20...v1.0.21) (2025-11-10)
 
 
