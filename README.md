@@ -19,7 +19,13 @@ cp env/actual-auto-backup.env.example env/actual-auto-backup.env
 cp docker-compose.yml.example docker-compose.yml
 ```
 
-Fill in `env/actual-auto-backup.env` with your Actual credentials and any cloud provider settings, then launch via Docker Compose or run locally:
+If you want a self-contained deployment with password protection, copy
+`docker-compose.with-auth.yml.example` instead – it bundles Traefik and
+[`actual-auto-auth`](https://github.com/rjlee/actual-auto-auth) so the web UI
+is fronted by the familiar login screen.
+
+Fill in `env/actual-auto-backup.env` with your Actual credentials and any cloud
+provider settings, then launch via Docker Compose or run locally:
 
 ```bash
 npm install
@@ -61,7 +67,16 @@ The service exposes a tiny web UI (default port `4010`) for:
 - Linking / unlinking Google Drive and Dropbox via OAuth
 - Viewing the status of each destination
 
-Set `BACKUP_PUBLIC_URL` to the externally reachable base URL (for OAuth callbacks) and switch Google Drive to OAuth mode by setting `GDRIVE_MODE=oauth` alongside your OAuth Client ID/Secret. For Dropbox, provide `DROPBOX_APP_KEY` and `DROPBOX_APP_SECRET`. Linked tokens are stored under `/app/data/tokens`.
+Set `BACKUP_PUBLIC_URL` to the externally reachable base URL (for OAuth
+callbacks) and switch Google Drive to OAuth mode by setting `GDRIVE_MODE=oauth`
+alongside your OAuth Client ID/Secret. For Dropbox, provide
+`DROPBOX_APP_KEY` and `DROPBOX_APP_SECRET`. Linked tokens are stored under
+`/app/data/tokens`.
+
+When using the bundled Traefik/auth compose file, the login cookie name defaults
+to `backup-auth` – update `AUTH_COOKIE_NAME` in the compose file (and set the
+same value in `env/actual-auto-backup.env`) if you want to run multiple
+services side-by-side.
 
 ### Provider-specific setup
 

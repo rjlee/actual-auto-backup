@@ -1,0 +1,78 @@
+services:
+  traefik:
+    image: traefik:2.11
+    container_name: actual-auto-backup-traefik
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+    ports:
+      - '${HTTP_PORT:-4010}:80'
+    networks:
+      - backup
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - actual-auto-backup
+      - actual-auto-auth
+
+  actual-auto-auth:
+    image: ${AUTH_FORWARD_IMAGE:-ghcr.io/rjlee/actual-auto-auth:latest}
+    pull_policy: always
+    container_name: actual-auto-backup-auth
+    environment:
+      ACTUAL_PASSWORD: ${ACTUAL_PASSWORD:?ACTUAL_PASSWORD must be set}
+      AUTH_APP_NAME: ${AUTH_APP_NAME:-Actual Auto Backup}
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-backup-auth}
+      PORT: 4000
+    networks:
+      - backup
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backup-auth.rule=PathPrefix(`/auth`)
+      - traefik.http.routers.backup-auth.entrypoints=web
+      - traefik.http.routers.backup-auth.priority=100
+      - traefik.http.services.backup-auth.loadbalancer.server.port=4000
+      - traefik.http.middlewares.backup-forward.forwardauth.address=http://actual-auto-backup-auth:4000/check
+      - traefik.http.middlewares.backup-forward.forwardauth.trustForwardHeader=true
+      - traefik.http.middlewares.backup-forward.forwardauth.authResponseHeaders=Set-Cookie
+      - 'traefik.http.middlewares.backup-forward.forwardauth.authRequestHeaders=X-Actual-App-Name,X-Actual-Cookie-Name,X-Forwarded-Host,X-Forwarded-Proto,Cookie'
+
+  actual-auto-backup:
+    image: ghcr.io/rjlee/actual-auto-backup:${ACTUAL_IMAGE_TAG:-latest}
+    container_name: actual-auto-backup
+    env_file:
+      - ./env/actual-auto-backup.env
+    environment:
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-backup-auth}
+      BACKUP_PUBLIC_URL: ${BACKUP_PUBLIC_URL:-http://localhost:${HTTP_PORT:-4010}}
+    restart: unless-stopped
+    depends_on:
+      - actual-auto-auth
+    networks:
+      - backup
+    volumes:
+      - type: bind
+        source: ./state/actual-auto-backup
+        target: /app/data
+      - type: bind
+        source: ./secrets
+        target: /app/secrets
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.backup.rule=PathPrefix(`/`) && !PathPrefix(`/auth`)
+      - traefik.http.routers.backup.entrypoints=web
+      - traefik.http.routers.backup.middlewares=backup-chain@docker
+      - traefik.http.services.backup.loadbalancer.server.port=4010
+      - traefik.http.middlewares.backup-headers.headers.customrequestheaders.X-Actual-App-Name=${AUTH_APP_NAME:-Actual Auto Backup}
+      - traefik.http.middlewares.backup-headers.headers.customrequestheaders.X-Actual-Cookie-Name=${AUTH_COOKIE_NAME:-backup-auth}
+      - traefik.http.middlewares.backup-chain.chain.middlewares=backup-headers@docker,backup-forward@docker
+
+networks:
+  backup:
+    driver: bridge
