@@ -36,4 +36,14 @@ export default [
       },
     },
   },
+  {
+    files: ["public/**/*.js"],
+    languageOptions: {
+      ...baseLanguageOptions,
+      globals: {
+        ...baseLanguageOptions.globals,
+        ...globals.browser,
+      },
+    },
+  },
 ];
