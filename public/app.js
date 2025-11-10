@@ -100,8 +100,8 @@ function renderDestinations(status) {
         status.google.mode === "oauth"
           ? "OAuth"
           : status.google.enabled
-          ? "Service account"
-          : null,
+            ? "Service account"
+            : null,
     },
     {
       id: "dropbox",
