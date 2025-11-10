@@ -1,36 +1,21 @@
 const fs = require("fs/promises");
 const path = require("path");
 const os = require("os");
+const sqlite3 = require("better-sqlite3");
 
-jest.mock("@actual-app/api", () => {
-  const send = jest.fn((method) => {
-    if (method === "backup-make") {
-      return Promise.resolve({});
-    }
-    if (method === "export-budget") {
-      return Promise.resolve({ data: Buffer.from("backup-data") });
-    }
-    return Promise.resolve({});
-  });
-  return {
-    init: jest.fn().mockResolvedValue(),
-    downloadBudget: jest.fn().mockResolvedValue({
-      id: { id: "local-budget-id" },
-    }),
-    loadBudget: jest.fn().mockResolvedValue({}),
-    shutdown: jest.fn().mockResolvedValue(),
-    getBudgets: jest
-      .fn()
-      .mockResolvedValue([
-        { id: "local-budget-id", cloudFileId: "budget-123" },
-      ]),
-    exportBudget: jest
-      .fn()
-      .mockResolvedValue({ data: Buffer.from("backup-data") }),
-    internal: { send },
-  };
-});
+jest.mock("@actual-app/api", () => ({
+  init: jest.fn().mockResolvedValue(),
+  downloadBudget: jest.fn().mockResolvedValue({
+    id: { id: "local-budget-id" },
+  }),
+  loadBudget: jest.fn().mockResolvedValue({}),
+  shutdown: jest.fn().mockResolvedValue(),
+  getBudgets: jest
+    .fn()
+    .mockResolvedValue([{ id: "local-budget-id", cloudFileId: "budget-123" }]),
+}));
 
+const api = require("@actual-app/api");
 const { runBackup } = require("../src/backup-runner");
 
 describe("runBackup", () => {
@@ -47,16 +32,22 @@ describe("runBackup", () => {
 
   test("executes local backup", async () => {
     const budgetDir = path.join(tmpDir, "budget");
-    await fs.mkdir(path.join(budgetDir, "local-budget-id"), {
-      recursive: true,
-    });
+    const budgetPath = path.join(budgetDir, "local-budget-id");
+    await fs.mkdir(budgetPath, { recursive: true });
+
+    const dbPath = path.join(budgetPath, "db.sqlite");
+    const db = sqlite3(dbPath);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS kvcache (key TEXT);
+      CREATE TABLE IF NOT EXISTS kvcache_key (key TEXT);
+      INSERT INTO kvcache(key) VALUES ('test');
+    `);
+    db.close();
+
     await fs.writeFile(
-      path.join(budgetDir, "local-budget-id", "db.sqlite"),
-      "",
+      path.join(budgetPath, "metadata.json"),
+      JSON.stringify({ budgetName: "Demo Budget" }),
     );
-    await fs.mkdir(path.join(budgetDir, "local-budget-id", "backups"), {
-      recursive: true,
-    });
 
     const config = {
       actual: {
@@ -87,6 +78,7 @@ describe("runBackup", () => {
 
     await runBackup(config, tokenStore);
 
+    expect(api.downloadBudget).toHaveBeenCalled();
     const files = await fs.readdir(config.local.outputDir);
     expect(files.some((file) => file.endsWith(".zip"))).toBe(true);
     const marker = await fs.readFile(

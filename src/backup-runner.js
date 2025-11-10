@@ -1,5 +1,8 @@
 const fs = require("fs/promises");
 const path = require("path");
+const os = require("os");
+const AdmZip = require("adm-zip");
+const sqlite3 = require("better-sqlite3");
 const api = require("@actual-app/api");
 
 const logger = require("./logger");
@@ -148,31 +151,36 @@ async function exportBudgetBuffer(config) {
 
   await api.loadBudget(resolvedBudgetId);
 
-  const backupDir = path.join(budgetDir, resolvedBudgetId, "backups");
-  await fs.mkdir(backupDir, { recursive: true });
+  const tmpBase = await fs.mkdtemp(path.join(os.tmpdir(), "actual-backup-"));
+  const tmpDbPath = path.join(tmpBase, "db.sqlite");
+  await fs.copyFile(dbFile, tmpDbPath);
 
+  let dbContent;
   try {
-    await api.internal.send("backup-make", { id: resolvedBudgetId });
+    const db = sqlite3(tmpDbPath);
+    db.exec(`
+      DELETE FROM kvcache;
+      DELETE FROM kvcache_key;
+    `);
+    db.close();
+    dbContent = await fs.readFile(tmpDbPath);
+  } finally {
+    await fs.rm(tmpBase, { recursive: true, force: true });
+  }
+
+  const zip = new AdmZip();
+  zip.addFile("db.sqlite", dbContent);
+
+  const metadataPath = path.join(budgetDir, resolvedBudgetId, "metadata.json");
+  try {
+    const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+    metadata.resetClock = true;
+    zip.addFile("metadata.json", Buffer.from(JSON.stringify(metadata)));
   } catch (err) {
-    logger.warn({ err }, "backup-make failed (continuing)");
+    logger.warn({ err }, "failed to read metadata.json");
   }
 
-  const exportResult = await api.internal.send("export-budget");
-  if (exportResult?.error) {
-    throw new Error(
-      `export-budget failed: ${JSON.stringify(exportResult.error)}`,
-    );
-  }
-
-  let buffer = exportResult?.data || exportResult?.buffer;
-  if (!buffer) {
-    throw new Error("export-budget returned no data");
-  }
-  if (!Buffer.isBuffer(buffer)) {
-    buffer = Buffer.from(buffer);
-  }
-
-  return buffer;
+  return zip.toBuffer();
 }
 
 async function markSuccess(outputDir) {
