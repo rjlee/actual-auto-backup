@@ -1,6 +1,9 @@
 const destinationList = document.getElementById("destinationList");
 const alertBox = document.getElementById("alert");
 const backupBtn = document.getElementById("backupBtn");
+const scheduleInfo = document.getElementById("scheduleInfo");
+const retentionInfo = document.getElementById("retentionInfo");
+const lastBackupInfo = document.getElementById("lastBackupInfo");
 
 function showAlert(message, type = "info") {
   alertBox.textContent = message;
@@ -17,6 +20,78 @@ function basePath() {
   return path === "" || path === "/" ? "" : path;
 }
 
+function formatSchedule(scheduleMeta) {
+  if (!scheduleMeta) return "Not configured";
+  const { description, cron } = scheduleMeta;
+  if (description && cron) {
+    return description.includes(cron)
+      ? description
+      : `${description} (cron: ${cron})`;
+  }
+  if (description) return description;
+  if (cron) return `Cron: ${cron}`;
+  return "Not configured";
+}
+
+function formatRetention(retentionMeta) {
+  if (!retentionMeta) return "Not configured";
+  return retentionMeta.description || "Not configured";
+}
+
+function formatRelativeTime(date) {
+  if (typeof Intl === "undefined" || !Intl.RelativeTimeFormat) {
+    return "";
+  }
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const units = [
+    { unit: "day", ms: 24 * 60 * 60 * 1000 },
+    { unit: "hour", ms: 60 * 60 * 1000 },
+    { unit: "minute", ms: 60 * 1000 },
+    { unit: "second", ms: 1000 },
+  ];
+  for (const { unit, ms } of units) {
+    if (Math.abs(diffMs) >= ms || unit === "second") {
+      const formatter = new Intl.RelativeTimeFormat(undefined, {
+        numeric: "auto",
+      });
+      const value = Math.round(diffMs / ms);
+      return formatter.format(value, unit);
+    }
+  }
+  return "";
+}
+
+function formatLastBackup(lastMeta) {
+  if (!lastMeta) return "No successful backups yet.";
+  const date = lastMeta.iso
+    ? new Date(lastMeta.iso)
+    : lastMeta.timestamp
+      ? new Date(lastMeta.timestamp * 1000)
+      : null;
+  if (!date || Number.isNaN(date.getTime())) {
+    return "No successful backups yet.";
+  }
+  const localeString = date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const relative = formatRelativeTime(date);
+  return relative ? `${localeString} (${relative})` : localeString;
+}
+
+function updateOverview(meta = {}) {
+  if (scheduleInfo) {
+    scheduleInfo.textContent = formatSchedule(meta.schedule);
+  }
+  if (retentionInfo) {
+    retentionInfo.textContent = formatRetention(meta.retention);
+  }
+  if (lastBackupInfo) {
+    lastBackupInfo.textContent = formatLastBackup(meta.lastBackup);
+  }
+}
+
 async function loadStatus() {
   try {
     const res = await fetch(`${basePath()}/api/status`);
@@ -24,27 +99,14 @@ async function loadStatus() {
       const text = await res.text();
       throw new Error(text || "status request failed");
     }
-    const { status, running } = await res.json();
+    const { status, running, meta } = await res.json();
     renderDestinations(status);
+    updateOverview(meta);
     backupBtn.disabled = running;
     hideAlert();
   } catch (err) {
+    updateOverview();
     showAlert(`Failed to load status: ${err.message}`, "danger");
-  }
-}
-
-function badgeClass(variant = "secondary") {
-  switch (variant) {
-    case "success":
-    case "secondary":
-    case "primary":
-    case "danger":
-    case "info":
-      return `badge bg-${variant}`;
-    case "warning":
-      return "badge bg-warning text-dark";
-    default:
-      return "badge bg-secondary";
   }
 }
 
@@ -56,7 +118,6 @@ function createDestinationItem({
   linkUrl,
   unlinkAction,
   statusText,
-  badges = [],
 }) {
   const item = document.createElement("div");
   item.className =
@@ -80,63 +141,8 @@ function createDestinationItem({
     unlinkBtn.onclick = () => unlinkAction(id);
     actions.appendChild(unlinkBtn);
   }
-  badges
-    .map((badge) =>
-      typeof badge === "string"
-        ? { label: badge, variant: "secondary" }
-        : badge,
-    )
-    .filter((badge) => badge && badge.label)
-    .forEach(({ label: badgeLabel, variant = "secondary" }) => {
-      const span = document.createElement("span");
-      span.className = `${badgeClass(variant)} ms-1`;
-      span.textContent = badgeLabel;
-      actions.appendChild(span);
-    });
   item.appendChild(actions);
   return item;
-}
-
-function buildBadges({ enabled, linked, mode, extras }) {
-  const badges = [];
-  badges.push({
-    label: enabled ? "Enabled" : "Disabled",
-    variant: enabled ? "success" : "secondary",
-  });
-
-  if (typeof linked === "boolean") {
-    badges.push({
-      label: linked ? "Linked" : "Not linked",
-      variant: linked ? "primary" : "warning",
-    });
-  }
-
-  if (enabled && mode) {
-    const modeLabel =
-      mode === "oauth"
-        ? "OAuth"
-        : mode === "service-account"
-          ? "Service account"
-          : mode;
-    badges.push({
-      label: modeLabel,
-      variant: "info",
-    });
-  }
-
-  const extraList = Array.isArray(extras)
-    ? extras.filter(Boolean)
-    : extras
-      ? [extras]
-      : [];
-  extraList.forEach((extraBadge) => {
-    if (typeof extraBadge === "string") {
-      badges.push({ label: extraBadge, variant: "secondary" });
-    } else if (extraBadge && extraBadge.label) {
-      badges.push(extraBadge);
-    }
-  });
-  return badges;
 }
 
 function renderDestinations(status) {
@@ -147,11 +153,9 @@ function renderDestinations(status) {
       label: "Local storage",
       enabled: status.local.enabled,
       linked: status.local.enabled,
-      statusText: status.local.enabled ? "Linked" : "Disabled",
-      badges: buildBadges({
-        enabled: status.local.enabled,
-        linked: status.local.enabled,
-      }),
+      statusText: status.local.enabled
+        ? "Enabled (writes inside the container volume)"
+        : "Disabled",
     },
     {
       id: "google",
@@ -165,14 +169,9 @@ function renderDestinations(status) {
       unlinkAction: unlinkProvider,
       statusText: status.google.enabled
         ? status.google.linked
-          ? "Linked"
-          : "Not linked"
+          ? `Linked (${status.google.mode === "oauth" ? "OAuth" : "Service account"})`
+          : `Not linked (${status.google.mode === "oauth" ? "OAuth" : "Service account"})`
         : "Disabled",
-      badges: buildBadges({
-        enabled: status.google.enabled,
-        linked: status.google.linked,
-        mode: status.google.mode,
-      }),
     },
     {
       id: "dropbox",
@@ -186,10 +185,6 @@ function renderDestinations(status) {
           ? "Linked"
           : "Not linked"
         : "Disabled",
-      badges: buildBadges({
-        enabled: status.dropbox.enabled,
-        linked: status.dropbox.linked,
-      }),
     },
     {
       id: "s3",
@@ -197,11 +192,6 @@ function renderDestinations(status) {
       enabled: status.s3.enabled,
       linked: status.s3.enabled,
       statusText: status.s3.enabled ? "Configured" : "Disabled",
-      badges: buildBadges({
-        enabled: status.s3.enabled,
-        linked: status.s3.enabled,
-        extras: status.s3.enabled ? "Configured" : null,
-      }),
     },
     {
       id: "webdav",
@@ -209,11 +199,6 @@ function renderDestinations(status) {
       enabled: status.webdav.enabled,
       linked: status.webdav.enabled,
       statusText: status.webdav.enabled ? "Configured" : "Disabled",
-      badges: buildBadges({
-        enabled: status.webdav.enabled,
-        linked: status.webdav.enabled,
-        extras: status.webdav.enabled ? "Configured" : null,
-      }),
     },
   ];
   entries.forEach((entry) => {

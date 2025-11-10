@@ -25,6 +25,24 @@
               <div id="alert" class="alert d-none" role="alert"></div>
 
               <section class="mb-4">
+                <h2 class="h6">Backup Overview</h2>
+                <ul class="list-unstyled small mb-0">
+                  <li>
+                    <strong>Schedule:</strong>
+                    <span id="scheduleInfo">Loading…</span>
+                  </li>
+                  <li>
+                    <strong>Retention:</strong>
+                    <span id="retentionInfo">Loading…</span>
+                  </li>
+                  <li>
+                    <strong>Last backup:</strong>
+                    <span id="lastBackupInfo">Loading…</span>
+                  </li>
+                </ul>
+              </section>
+
+              <section class="mb-4">
                 <h2 class="h6">Backup Destinations</h2>
                 <div class="list-group" id="destinationList"></div>
               </section>
@@ -37,9 +55,9 @@
               </section>
 
               <small class="text-muted">
-                Backups run on schedule and are saved locally to
-                <code>/app/data/backups</code> when enabled. Cloud destinations
-                require linking below.
+                Backups follow the configured schedule and write to every
+                enabled destination. Services that use OAuth (Google Drive or
+                Dropbox) must be linked before they can receive uploads.
               </small>
             </div>
           </div>
