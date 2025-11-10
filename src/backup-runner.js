@@ -35,6 +35,8 @@ async function exportBudgetBuffer(config) {
     );
   }
 
+  logger.info({ downloadResult }, "downloadBudget result");
+
   let budgetId = syncId;
   if (downloadResult) {
     if (typeof downloadResult.id === "string" && downloadResult.id.length > 0) {
@@ -52,7 +54,15 @@ async function exportBudgetBuffer(config) {
       budgetId = downloadResult.budgetId;
     }
   }
-  logger.debug({ downloadResult, budgetId }, "resolved budget id for export");
+  if (typeof budgetId !== "string") {
+    throw new Error(
+      `Unable to resolve budget id from downloadBudget result: ${JSON.stringify(
+        downloadResult,
+      )}`,
+    );
+  }
+  budgetId = budgetId.trim();
+  logger.debug({ budgetId }, "resolved budget id for export");
 
   await api.loadBudget({ id: budgetId });
 
