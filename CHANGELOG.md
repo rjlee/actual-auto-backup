@@ -1,3 +1,11 @@
+## [1.0.3](https://github.com/rjlee/actual-auto-backup/compare/v1.0.2...v1.0.3) (2025-11-10)
+
+
+### Bug Fixes
+
+* fix workflow and downloadbudget functionality ([89e9293](https://github.com/rjlee/actual-auto-backup/commit/89e9293af23553e81e87afe4565f67db5ef085ec))
+* fix workflow run order ([4c66ff0](https://github.com/rjlee/actual-auto-backup/commit/4c66ff0b82a1da27e9b78abedb3281cb9a90763e))
+
 ## [1.0.2](https://github.com/rjlee/actual-auto-backup/compare/v1.0.1...v1.0.2) (2025-11-10)
 
 
