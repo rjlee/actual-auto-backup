@@ -38,6 +38,14 @@ describe("runBackup", () => {
 
   test("executes local backup", async () => {
     const budgetDir = path.join(tmpDir, "budget");
+    await fs.mkdir(path.join(budgetDir, "local-budget-id"), {
+      recursive: true,
+    });
+    await fs.writeFile(
+      path.join(budgetDir, "local-budget-id", "db.sqlite"),
+      "",
+    );
+
     const config = {
       actual: {
         serverUrl: "https://example.com",

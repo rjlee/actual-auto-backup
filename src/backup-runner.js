@@ -64,21 +64,86 @@ async function exportBudgetBuffer(config) {
     }
   }
 
-  const resolvedBudgetId =
+  let resolvedBudgetId =
     typeof budgetId === "string" && budgetId.length > 0 ? budgetId : syncId;
-  logger.info({ budgetId: resolvedBudgetId }, "resolved budget id for export");
 
-  const dbFile = path.join(budgetDir, resolvedBudgetId, "db.sqlite");
-  const exists = await fs
-    .stat(dbFile)
-    .then(() => true)
-    .catch(() => false);
-  if (!exists) {
-    logger.warn(
-      { dbFile, syncId, resolvedBudgetId },
-      "budget directory missing after download, attempting load without local cache",
+  const budgets = await api.getBudgets().catch((err) => {
+    logger.warn({ err }, "getBudgets failed after download");
+    return null;
+  });
+
+  if (Array.isArray(budgets)) {
+    logger.info(
+      {
+        budgets: budgets.map((b) => ({
+          id: b?.id,
+          cloudFileId: b?.cloudFileId,
+          name: b?.name,
+        })),
+      },
+      "available budgets",
     );
   }
+
+  if (Array.isArray(budgets)) {
+    const byCloud = budgets.find((b) => b?.cloudFileId === syncId);
+    if (byCloud?.id) {
+      resolvedBudgetId = byCloud.id.trim();
+    } else {
+      const byId = budgets.find((b) => b?.id === syncId);
+      if (byId?.id) {
+        resolvedBudgetId = byId.id.trim();
+      } else if (budgets.length === 1 && budgets[0]?.id) {
+        resolvedBudgetId = budgets[0].id.trim();
+      }
+    }
+  }
+
+  const fileExists = async (filePath) =>
+    fs
+      .stat(filePath)
+      .then(() => true)
+      .catch(() => false);
+
+  let dbFile = path.join(budgetDir, resolvedBudgetId, "db.sqlite");
+  let exists = await fileExists(dbFile);
+
+  if (!exists && Array.isArray(budgets)) {
+    for (const entry of budgets) {
+      if (!entry?.id) continue;
+      const candidate = path.join(budgetDir, entry.id, "db.sqlite");
+      if (await fileExists(candidate)) {
+        resolvedBudgetId = entry.id.trim();
+        dbFile = candidate;
+        exists = true;
+        break;
+      }
+    }
+  }
+
+  if (!exists) {
+    const dirs = await fs.readdir(budgetDir).catch(() => []);
+    for (const entry of dirs) {
+      const candidate = path.join(budgetDir, entry, "db.sqlite");
+      if (await fileExists(candidate)) {
+        resolvedBudgetId = entry.trim();
+        dbFile = candidate;
+        exists = true;
+        break;
+      }
+    }
+  }
+
+  if (!exists) {
+    throw new Error(
+      `Budget directory missing after download: ${dbFile}. Ensure ACTUAL_SYNC_ID is correct and accessible.`,
+    );
+  }
+
+  logger.info(
+    { budgetId: resolvedBudgetId, dbFile },
+    "loading budget for export",
+  );
 
   await api.loadBudget(resolvedBudgetId);
 
