@@ -2,8 +2,8 @@
 set -euo pipefail
 
 if [ ! -f "/app/data/.last-success" ]; then
-  echo "missing success marker"
-  exit 1
+  echo "no backup has run yet"
+  exit 0
 fi
 
 threshold="${HEALTHCHECK_THRESHOLD_SECONDS:-86400}"

@@ -10,7 +10,7 @@ Backups created by this service can be restored directly through the Actual web 
 - **Configurable schedule** – Cron expression (default weekly: Mondays at 00:00 UTC) controls when exports run; on-demand runs available via `npm run backup`.
 - **Local retention** – Keep the most recent _N_ archives plus optional week/month snapshots to manage disk usage.
 - **Cloud replication** – Independently toggle uploads for Google Drive, S3/B2-compatible storage, Dropbox, or WebDAV shares.
-- **Health monitoring** – Structured logging via `pino` and a `/bin/healthcheck.sh` script compatible with Docker health checks.
+- **Health monitoring** – Structured logging via `pino` and a `/bin/healthcheck.sh` script compatible with Docker health checks (reports healthy until the first backup completes, then enforces freshness thresholds).
 
 ## Quick start
 
