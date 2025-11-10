@@ -1,0 +1,19 @@
+# Dependency directories
+node_modules/
+
+# Logs
+*.log
+
+# Environment files
+.env
+
+# Cached data
+data/
+state/
+coverage/
+
+# Secrets
+secrets/
+
+# OS artifacts
+.DS_Store

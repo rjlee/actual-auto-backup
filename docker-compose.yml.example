@@ -1,0 +1,26 @@
+services:
+  actual-auto-backup:
+    image: ghcr.io/rjlee/actual-auto-backup:${ACTUAL_IMAGE_TAG:-latest}
+    container_name: actual-auto-backup
+    env_file:
+      - ./env/actual-auto-backup.env
+    environment:
+      ACTUAL_SERVER_URL: ${ACTUAL_SERVER_URL}
+      ACTUAL_PASSWORD: ${ACTUAL_PASSWORD}
+      ACTUAL_SYNC_ID: ${ACTUAL_SYNC_ID}
+    restart: unless-stopped
+    # Optional: expose the management UI
+    # ports:
+    #   - "4010:4010"
+    volumes:
+      - type: bind
+        source: ./state/actual-auto-backup
+        target: /app/data
+      - type: bind
+        source: ./secrets
+        target: /app/secrets
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

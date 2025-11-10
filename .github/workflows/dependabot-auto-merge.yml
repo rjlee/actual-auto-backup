@@ -1,0 +1,21 @@
+name: Dependabot Auto Merge
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types:
+      - completed
+
+jobs:
+  auto-merge:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Auto merge
+        uses: ahmadnassri/action-dependabot-auto-merge@v3
+        with:
+          target: minor
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
