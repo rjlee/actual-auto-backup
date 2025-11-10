@@ -3,9 +3,15 @@ const path = require("path");
 const os = require("os");
 
 jest.mock("@actual-app/api", () => {
-  const send = jest
-    .fn()
-    .mockResolvedValue({ data: Buffer.from("backup-data") });
+  const send = jest.fn((method) => {
+    if (method === "backup-make") {
+      return Promise.resolve({});
+    }
+    if (method === "export-budget") {
+      return Promise.resolve({ data: Buffer.from("backup-data") });
+    }
+    return Promise.resolve({});
+  });
   return {
     init: jest.fn().mockResolvedValue(),
     downloadBudget: jest.fn().mockResolvedValue({

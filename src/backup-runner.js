@@ -151,39 +151,17 @@ async function exportBudgetBuffer(config) {
   const backupDir = path.join(budgetDir, resolvedBudgetId, "backups");
   await fs.mkdir(backupDir, { recursive: true });
 
-  let exportResult = await api.internal.send("export-budget");
+  try {
+    await api.internal.send("backup-make", { id: resolvedBudgetId });
+  } catch (err) {
+    logger.warn({ err }, "backup-make failed (continuing)");
+  }
+
+  const exportResult = await api.internal.send("export-budget");
   if (exportResult?.error) {
-    logger.warn(
-      { error: exportResult.error },
-      "initial export failed, attempting loadBackup and retry",
+    throw new Error(
+      `export-budget failed: ${JSON.stringify(exportResult.error)}`,
     );
-    const backups = await api.getBackups(resolvedBudgetId);
-    const latestBackup =
-      backups?.find((b) => b?.id && b?.isLatest) || backups?.[0] || null;
-    if (latestBackup?.id) {
-      logger.info(
-        { backupId: latestBackup.id },
-        "restoring latest backup prior to retry",
-      );
-      await api.loadBackup({
-        id: resolvedBudgetId,
-        backupId: latestBackup.id,
-      });
-    } else {
-      logger.warn(
-        { resolvedBudgetId },
-        "no backup available to restore before retry",
-      );
-    }
-    await fs.mkdir(backupDir, { recursive: true });
-    exportResult = await api.internal.send("export-budget");
-    if (exportResult?.error) {
-      throw new Error(
-        `export-budget failed after retry: ${JSON.stringify(
-          exportResult.error,
-        )}`,
-      );
-    }
   }
 
   let buffer = exportResult?.data || exportResult?.buffer;
