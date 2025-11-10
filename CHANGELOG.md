@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/rjlee/actual-auto-backup/compare/v1.0.22...v1.1.0) (2025-11-10)
+
+
+### Features
+
+* add auth-enabled compose sample ([489575e](https://github.com/rjlee/actual-auto-backup/commit/489575e98d3244e800e33c5fdf372268de030018))
+
 ## [1.0.22](https://github.com/rjlee/actual-auto-backup/compare/v1.0.21...v1.0.22) (2025-11-10)
 
 
