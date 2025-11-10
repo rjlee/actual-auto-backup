@@ -37,6 +37,7 @@ describe("runBackup", () => {
   });
 
   test("executes local backup", async () => {
+    const budgetDir = path.join(tmpDir, "budget");
     const config = {
       actual: {
         serverUrl: "https://example.com",
