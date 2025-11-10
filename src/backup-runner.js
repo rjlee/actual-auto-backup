@@ -152,9 +152,28 @@ async function exportBudgetBuffer(config) {
 
   const exportResult = await api.internal.send("export-budget");
   if (exportResult?.error) {
-    throw new Error(
-      `export-budget failed: ${JSON.stringify(exportResult.error)}`,
+    logger.warn(
+      { error: exportResult.error },
+      "initial export failed, creating backup directory and retrying",
     );
+    const backupDir = path.join(budgetDir, resolvedBudgetId, "backups");
+    await fs.mkdir(backupDir, { recursive: true });
+    const retryResult = await api.internal.send("export-budget");
+    if (retryResult?.error) {
+      throw new Error(
+        `export-budget failed after retry: ${JSON.stringify(
+          retryResult.error,
+        )}`,
+      );
+    }
+    let retryBuffer = retryResult?.data || retryResult?.buffer;
+    if (!retryBuffer) {
+      throw new Error("export-budget returned no data");
+    }
+    if (!Buffer.isBuffer(retryBuffer)) {
+      retryBuffer = Buffer.from(retryBuffer);
+    }
+    return retryBuffer;
   }
 
   let buffer = exportResult?.data || exportResult?.buffer;
