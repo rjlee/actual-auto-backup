@@ -48,55 +48,48 @@ async function exportBudgetBuffer(config) {
     "fetched budgets after download",
   );
 
-  const pickBudgetId = () => {
-    if (
-      downloadResult &&
-      typeof downloadResult.id === "string" &&
-      downloadResult.id
-    ) {
-      return downloadResult.id.trim();
-    }
-    if (
-      downloadResult?.id &&
+  let budgetId = syncId;
+  if (downloadResult) {
+    if (typeof downloadResult.id === "string" && downloadResult.id.length > 0) {
+      budgetId = downloadResult.id.trim();
+    } else if (
+      downloadResult.id &&
       typeof downloadResult.id.id === "string" &&
-      downloadResult.id.id
+      downloadResult.id.id.length > 0
     ) {
-      return downloadResult.id.id.trim();
-    }
-    if (
-      typeof downloadResult?.budgetId === "string" &&
-      downloadResult.budgetId
+      budgetId = downloadResult.id.id.trim();
+    } else if (
+      typeof downloadResult.budgetId === "string" &&
+      downloadResult.budgetId.length > 0
     ) {
-      return downloadResult.budgetId.trim();
+      budgetId = downloadResult.budgetId.trim();
     }
-    if (Array.isArray(budgets)) {
-      const byCloud = budgets.find((b) => b?.cloudFileId === syncId);
-      if (byCloud?.id) return byCloud.id.trim();
-      const byId = budgets.find((b) => b?.id === syncId);
-      if (byId?.id) return byId.id.trim();
-      const first = budgets[0];
-      if (first?.id) return first.id.trim();
-    }
-    return syncId;
-  };
-
-  const budgetId = pickBudgetId();
-  if (typeof budgetId !== "string" || !budgetId) {
-    throw new Error(
-      "Unable to resolve budget id from downloadBudget/getBudgets result",
-    );
   }
-  const resolvedBudgetId = budgetId.trim();
+
+  if (Array.isArray(budgets)) {
+    const byCloud = budgets.find((b) => b?.cloudFileId === syncId);
+    if (byCloud?.id) {
+      budgetId = byCloud.id.trim();
+    } else {
+      const byId = budgets.find((b) => b?.id === syncId);
+      if (byId?.id) {
+        budgetId = byId.id.trim();
+      }
+    }
+  }
+
+  const resolvedBudgetId =
+    typeof budgetId === "string" && budgetId.length > 0 ? budgetId : syncId;
   logger.info({ budgetId: resolvedBudgetId }, "resolved budget id for export");
 
   try {
-    await api.loadBudget({ id: resolvedBudgetId });
+    await api.loadBudget(resolvedBudgetId);
   } catch (err) {
     logger.warn(
       { err, budgetId: resolvedBudgetId, syncId },
       "first loadBudget attempt failed, trying sync id",
     );
-    await api.loadBudget({ id: syncId });
+    await api.loadBudget(syncId);
   }
 
   const exportResult = await api.internal.send("export-budget");
