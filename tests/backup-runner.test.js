@@ -45,6 +45,9 @@ describe("runBackup", () => {
       path.join(budgetDir, "local-budget-id", "db.sqlite"),
       "",
     );
+    await fs.mkdir(path.join(budgetDir, "local-budget-id", "backups"), {
+      recursive: true,
+    });
 
     const config = {
       actual: {

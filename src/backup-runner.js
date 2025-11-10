@@ -147,6 +147,9 @@ async function exportBudgetBuffer(config) {
 
   await api.loadBudget(resolvedBudgetId);
 
+  const backupDir = path.join(budgetDir, resolvedBudgetId, "backups");
+  await fs.mkdir(backupDir, { recursive: true });
+
   const exportResult = await api.internal.send("export-budget");
   if (exportResult?.error) {
     throw new Error(
