@@ -37,28 +37,40 @@ async function exportBudgetBuffer(config) {
 
   logger.info({ downloadResult }, "downloadBudget result");
 
-  let budgetId = syncId;
+  let budgetIdCandidate = null;
   if (downloadResult) {
     if (typeof downloadResult.id === "string" && downloadResult.id.length > 0) {
-      budgetId = downloadResult.id;
+      budgetIdCandidate = downloadResult.id;
     } else if (
       downloadResult.id &&
       typeof downloadResult.id.id === "string" &&
       downloadResult.id.id.length > 0
     ) {
-      budgetId = downloadResult.id.id;
+      budgetIdCandidate = downloadResult.id.id;
     } else if (
       typeof downloadResult.budgetId === "string" &&
       downloadResult.budgetId.length > 0
     ) {
-      budgetId = downloadResult.budgetId;
+      budgetIdCandidate = downloadResult.budgetId;
     }
   }
+
+  const budgets = await api.getBudgets();
+  logger.debug(
+    { count: budgets?.length ?? 0 },
+    "fetched local budget list after download",
+  );
+  const matchByCloud = Array.isArray(budgets)
+    ? budgets.find((b) => b?.cloudFileId === syncId)
+    : null;
+  const matchById = Array.isArray(budgets)
+    ? budgets.find((b) => b?.id === syncId)
+    : null;
+  let budgetId =
+    budgetIdCandidate || matchByCloud?.id || matchById?.id || syncId;
   if (typeof budgetId !== "string") {
     throw new Error(
-      `Unable to resolve budget id from downloadBudget result: ${JSON.stringify(
-        downloadResult,
-      )}`,
+      `Unable to resolve budget id from downloadBudget/getBudgets result`,
     );
   }
   budgetId = budgetId.trim();

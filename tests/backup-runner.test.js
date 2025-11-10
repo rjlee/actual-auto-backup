@@ -13,6 +13,11 @@ jest.mock("@actual-app/api", () => {
     }),
     loadBudget: jest.fn().mockResolvedValue({}),
     shutdown: jest.fn().mockResolvedValue(),
+    getBudgets: jest
+      .fn()
+      .mockResolvedValue([
+        { id: "local-budget-id", cloudFileId: "budget-123" },
+      ]),
     internal: { send },
   };
 });
