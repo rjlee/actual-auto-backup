@@ -35,10 +35,24 @@ async function exportBudgetBuffer(config) {
     );
   }
 
-  const budgetId =
-    typeof downloadResult?.id === "string" && downloadResult.id.length > 0
-      ? downloadResult.id
-      : syncId;
+  let budgetId = syncId;
+  if (downloadResult) {
+    if (typeof downloadResult.id === "string" && downloadResult.id.length > 0) {
+      budgetId = downloadResult.id;
+    } else if (
+      downloadResult.id &&
+      typeof downloadResult.id.id === "string" &&
+      downloadResult.id.id.length > 0
+    ) {
+      budgetId = downloadResult.id.id;
+    } else if (
+      typeof downloadResult.budgetId === "string" &&
+      downloadResult.budgetId.length > 0
+    ) {
+      budgetId = downloadResult.budgetId;
+    }
+  }
+  logger.debug({ downloadResult, budgetId }, "resolved budget id for export");
 
   await api.loadBudget({ id: budgetId });
 
