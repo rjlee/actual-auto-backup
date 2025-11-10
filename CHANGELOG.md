@@ -1,3 +1,10 @@
+## [1.0.13](https://github.com/rjlee/actual-auto-backup/compare/v1.0.12...v1.0.13) (2025-11-10)
+
+
+### Bug Fixes
+
+* fix failing backup ([17b6c01](https://github.com/rjlee/actual-auto-backup/commit/17b6c01828c635dcad93f2c3c82b4b48d31bcfe8))
+
 ## [1.0.12](https://github.com/rjlee/actual-auto-backup/compare/v1.0.11...v1.0.12) (2025-11-10)
 
 
