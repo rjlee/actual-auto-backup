@@ -150,32 +150,22 @@ async function exportBudgetBuffer(config) {
   const backupDir = path.join(budgetDir, resolvedBudgetId, "backups");
   await fs.mkdir(backupDir, { recursive: true });
 
-  const exportResult = await api.exportBudget().catch(async (err) => {
-    logger.warn(
-      { err },
-      "exportBudget via API failed, attempting internal export as fallback",
+  const exportResult = await api.internal.send("export-budget");
+  if (exportResult?.error) {
+    throw new Error(
+      `export-budget failed: ${JSON.stringify(exportResult.error)}`,
     );
-    const internal = await api.internal.send("export-budget");
-    if (internal?.error) {
-      throw new Error(
-        `export-budget failed: ${JSON.stringify(internal.error)}`,
-      );
-    }
-    return internal;
-  });
-
-  let data = exportResult?.data;
-  if (!data && exportResult?.buffer) {
-    data = exportResult.buffer;
   }
-  if (!data) {
+
+  let buffer = exportResult?.data || exportResult?.buffer;
+  if (!buffer) {
     throw new Error("export-budget returned no data");
   }
-  if (!Buffer.isBuffer(data)) {
-    data = Buffer.from(data);
+  if (!Buffer.isBuffer(buffer)) {
+    buffer = Buffer.from(buffer);
   }
 
-  return data;
+  return buffer;
 }
 
 async function markSuccess(outputDir) {

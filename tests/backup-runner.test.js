@@ -51,9 +51,6 @@ describe("runBackup", () => {
     await fs.mkdir(path.join(budgetDir, "local-budget-id", "backups"), {
       recursive: true,
     });
-    await fs.mkdir(path.join(budgetDir, "local-budget-id", "backups"), {
-      recursive: true,
-    });
 
     const config = {
       actual: {
