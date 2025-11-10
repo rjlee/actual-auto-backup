@@ -135,8 +135,9 @@ async function exportBudgetBuffer(config) {
   }
 
   if (!exists) {
-    throw new Error(
-      `Budget directory missing after download: ${dbFile}. Ensure ACTUAL_SYNC_ID is correct and accessible.`,
+    logger.warn(
+      { dbFile, syncId, resolvedBudgetId },
+      "budget directory missing after download, attempting load without local cache",
     );
   }
 
@@ -150,30 +151,39 @@ async function exportBudgetBuffer(config) {
   const backupDir = path.join(budgetDir, resolvedBudgetId, "backups");
   await fs.mkdir(backupDir, { recursive: true });
 
-  const exportResult = await api.internal.send("export-budget");
+  let exportResult = await api.internal.send("export-budget");
   if (exportResult?.error) {
     logger.warn(
       { error: exportResult.error },
-      "initial export failed, creating backup directory and retrying",
+      "initial export failed, attempting loadBackup and retry",
     );
-    const backupDir = path.join(budgetDir, resolvedBudgetId, "backups");
+    const backups = await api.getBackups(resolvedBudgetId);
+    const latestBackup =
+      backups?.find((b) => b?.id && b?.isLatest) || backups?.[0] || null;
+    if (latestBackup?.id) {
+      logger.info(
+        { backupId: latestBackup.id },
+        "restoring latest backup prior to retry",
+      );
+      await api.loadBackup({
+        id: resolvedBudgetId,
+        backupId: latestBackup.id,
+      });
+    } else {
+      logger.warn(
+        { resolvedBudgetId },
+        "no backup available to restore before retry",
+      );
+    }
     await fs.mkdir(backupDir, { recursive: true });
-    const retryResult = await api.internal.send("export-budget");
-    if (retryResult?.error) {
+    exportResult = await api.internal.send("export-budget");
+    if (exportResult?.error) {
       throw new Error(
         `export-budget failed after retry: ${JSON.stringify(
-          retryResult.error,
+          exportResult.error,
         )}`,
       );
     }
-    let retryBuffer = retryResult?.data || retryResult?.buffer;
-    if (!retryBuffer) {
-      throw new Error("export-budget returned no data");
-    }
-    if (!Buffer.isBuffer(retryBuffer)) {
-      retryBuffer = Buffer.from(retryBuffer);
-    }
-    return retryBuffer;
   }
 
   let buffer = exportResult?.data || exportResult?.buffer;
