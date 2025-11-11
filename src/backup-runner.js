@@ -315,11 +315,7 @@ async function runBackupForSync(config, tokenStore, syncId, usedBudgetIds) {
   }
 
   const budgetId = resolvedBudgetId || syncId;
-  const archiveBudgetId = makeUniqueBudgetId(
-    budgetId,
-    syncId,
-    usedBudgetIds,
-  );
+  const archiveBudgetId = makeUniqueBudgetId(budgetId, syncId, usedBudgetIds);
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
 
   const tasks = await createDestinationTasks({
