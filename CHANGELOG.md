@@ -1,3 +1,10 @@
+## [1.1.2](https://github.com/rjlee/actual-auto-backup/compare/v1.1.1...v1.1.2) (2025-11-11)
+
+
+### Bug Fixes
+
+* fix budget export ([28e41c9](https://github.com/rjlee/actual-auto-backup/commit/28e41c938f221479c273ad5232aac9fd9557061b))
+
 ## [1.1.1](https://github.com/rjlee/actual-auto-backup/compare/v1.1.0...v1.1.1) (2025-11-11)
 
 
