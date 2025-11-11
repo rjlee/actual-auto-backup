@@ -1,6 +1,6 @@
 {
   "name": "actual-auto-backup",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Automated Actual Budget backups with optional cloud replication.",
   "main": "src/index.js",

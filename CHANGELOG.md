@@ -1,3 +1,11 @@
+## [1.1.1](https://github.com/rjlee/actual-auto-backup/compare/v1.1.0...v1.1.1) (2025-11-11)
+
+
+### Bug Fixes
+
+* fix formatting ([5576ec6](https://github.com/rjlee/actual-auto-backup/commit/5576ec676f4db94db493db7f9f58d39937fb2f39))
+* fix naming ([06a2ff8](https://github.com/rjlee/actual-auto-backup/commit/06a2ff83df5d3452747ba0e9d41ca486dea7930c))
+
 # [1.1.0](https://github.com/rjlee/actual-auto-backup/compare/v1.0.22...v1.1.0) (2025-11-10)
 
 
