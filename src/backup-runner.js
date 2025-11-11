@@ -168,7 +168,11 @@ async function readMetadataBuffer(budgetDir, budgetId, syncId) {
   try {
     const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
     metadata.resetClock = true;
-    return Buffer.from(JSON.stringify(metadata));
+    return {
+      buffer: Buffer.from(JSON.stringify(metadata)),
+      name:
+        metadata.budgetName || metadata.name || metadata.displayName || null,
+    };
   } catch (err) {
     const context = { err };
     if (typeof syncId !== "undefined") {
@@ -235,6 +239,12 @@ async function exportBudgetBuffer(config, syncIdOverride) {
   const budgets = await safeGetBudgets();
   logBudgetSummary(budgets, { syncId });
 
+  const matchedBudget = Array.isArray(budgets)
+    ? budgets.find(
+        (entry) => entry?.cloudFileId === syncId || entry?.id === syncId,
+      )
+    : null;
+
   const { budgetId, dbFile, dbExists } = await resolveBudgetResources({
     syncId,
     downloadResult,
@@ -254,12 +264,17 @@ async function exportBudgetBuffer(config, syncIdOverride) {
   await api.loadBudget(budgetId);
 
   const dbContent = await createSanitizedDatabaseBuffer(dbFile);
-  const metadataBuffer = await readMetadataBuffer(budgetDir, budgetId, syncId);
-  const buffer = buildZipBuffer(dbContent, metadataBuffer);
+  const metadataInfo = await readMetadataBuffer(budgetDir, budgetId, syncId);
+  const buffer = buildZipBuffer(dbContent, metadataInfo?.buffer);
 
   return {
     buffer,
     budgetId,
+    displayName:
+      metadataInfo?.name ||
+      matchedBudget?.name ||
+      matchedBudget?.id ||
+      budgetId,
   };
 }
 
@@ -269,15 +284,15 @@ function sanitizeIdentifier(value) {
 }
 
 function makeUniqueBudgetId(baseId, syncId, usedIds) {
-  const initial = baseId || syncId || "budget";
-  let candidate = initial;
+  const base = sanitizeIdentifier(baseId) || sanitizeIdentifier(syncId);
+  let candidate = base || "budget";
   const syncSuffix = sanitizeIdentifier(syncId);
 
   if (usedIds.has(candidate)) {
-    candidate = `${initial}-${syncSuffix}`;
+    candidate = `${candidate}-${syncSuffix}`;
     let counter = 1;
     while (usedIds.has(candidate)) {
-      candidate = `${initial}-${syncSuffix}-${counter}`;
+      candidate = `${base || "budget"}-${syncSuffix}-${counter}`;
       counter += 1;
     }
   }
@@ -299,10 +314,12 @@ async function runBackupForSync(config, tokenStore, syncId, usedBudgetIds) {
   logger.info({ syncId }, "starting backup job");
   let buffer;
   let resolvedBudgetId;
+  let displayName;
   try {
     const result = await exportBudgetBuffer(config, syncId);
     buffer = result.buffer;
     resolvedBudgetId = result.budgetId;
+    displayName = result.displayName;
   } catch (err) {
     logger.error({ err, syncId }, "failed to export budget");
     throw err;
@@ -315,7 +332,11 @@ async function runBackupForSync(config, tokenStore, syncId, usedBudgetIds) {
   }
 
   const budgetId = resolvedBudgetId || syncId;
-  const archiveBudgetId = makeUniqueBudgetId(budgetId, syncId, usedBudgetIds);
+  const archiveBudgetId = makeUniqueBudgetId(
+    displayName || budgetId,
+    syncId,
+    usedBudgetIds,
+  );
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
 
   const tasks = await createDestinationTasks({

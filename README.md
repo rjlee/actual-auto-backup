@@ -9,7 +9,7 @@ Backups created by this service can be restored directly through the Actual web 
 - **Native ZIP exports** – Uses `@actual-app/api` to generate the same archive produced by Actual's “Download backup” button.
 - **Configurable schedule** – Cron expression (default weekly: Mondays at 00:00 UTC) controls when exports run; on-demand runs available via `npm run backup`.
 - **Local retention** – Keep the most recent _N_ archives plus optional week/month snapshots to manage disk usage.
-- **Multiple budgets** – Provide a comma-separated list of sync IDs and the service backs up each one in sequence.
+- **Multiple budgets** – Provide a comma-separated list of sync IDs and the service backs up each one in sequence (archives are named after the budget display name, with the sync ID appended when needed).
 - **Cloud replication** – Independently toggle uploads for Google Drive, S3/B2-compatible storage, Dropbox, or WebDAV shares.
 - **Health monitoring** – Structured logging via `pino` and a `/bin/healthcheck.sh` script compatible with Docker health checks (reports healthy until the first backup completes, then enforces freshness thresholds).
 

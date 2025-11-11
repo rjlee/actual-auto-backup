@@ -6,13 +6,17 @@ const sqlite3 = require("better-sqlite3");
 jest.mock("@actual-app/api", () => ({
   init: jest.fn().mockResolvedValue(),
   downloadBudget: jest.fn().mockResolvedValue({
-    id: { id: "local-budget-id" },
+    id: { id: "lee-family" },
   }),
   loadBudget: jest.fn().mockResolvedValue({}),
   shutdown: jest.fn().mockResolvedValue(),
-  getBudgets: jest
-    .fn()
-    .mockResolvedValue([{ id: "local-budget-id", cloudFileId: "budget-123" }]),
+  getBudgets: jest.fn().mockResolvedValue([
+    {
+      id: "local-budget-id",
+      cloudFileId: "budget-123",
+      name: "Main Budget",
+    },
+  ]),
 }));
 
 const api = require("@actual-app/api");
@@ -24,10 +28,14 @@ describe("runBackup", () => {
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "backup-runner-"));
     api.downloadBudget.mockClear();
-    api.downloadBudget.mockResolvedValue({ id: { id: "local-budget-id" } });
+    api.downloadBudget.mockResolvedValue({ id: { id: "lee-family" } });
     api.getBudgets.mockClear();
     api.getBudgets.mockResolvedValue([
-      { id: "local-budget-id", cloudFileId: "budget-123" },
+      {
+        id: "lee-family",
+        cloudFileId: "budget-123",
+        name: "Main Budget",
+      },
     ]);
   });
 
@@ -38,7 +46,7 @@ describe("runBackup", () => {
 
   test("executes local backup", async () => {
     const budgetDir = path.join(tmpDir, "budget");
-    const budgetPath = path.join(budgetDir, "local-budget-id");
+    const budgetPath = path.join(budgetDir, "lee-family");
     await fs.mkdir(budgetPath, { recursive: true });
 
     const dbPath = path.join(budgetPath, "db.sqlite");
@@ -52,7 +60,7 @@ describe("runBackup", () => {
 
     await fs.writeFile(
       path.join(budgetPath, "metadata.json"),
-      JSON.stringify({ budgetName: "Demo Budget" }),
+      JSON.stringify({ budgetName: "Main Budget" }),
     );
 
     const config = {
@@ -87,7 +95,7 @@ describe("runBackup", () => {
 
     expect(api.downloadBudget).toHaveBeenCalled();
     const files = await fs.readdir(config.local.outputDir);
-    expect(files).toEqual([expect.stringMatching(/^local-budget-id-.*\.zip$/)]);
+    expect(files).toEqual([expect.stringMatching(/^Main-Budget-.*\.zip$/)]);
     const marker = await fs.readFile(
       path.join(tmpDir, ".last-success"),
       "utf8",
@@ -97,38 +105,50 @@ describe("runBackup", () => {
 
   test("backs up multiple sync ids sequentially", async () => {
     const budgetDir = path.join(tmpDir, "budget-multi");
-    const firstBudgetPath = path.join(budgetDir, "local-budget-id");
-    const secondBudgetPath = path.join(budgetDir, "local-budget-id-2");
-    await fs.mkdir(firstBudgetPath, { recursive: true });
-    await fs.mkdir(secondBudgetPath, { recursive: true });
+    const budgetsMeta = [
+      {
+        dir: path.join(budgetDir, "Primary-Budget-123"),
+        value: "test",
+        name: "Primary Budget",
+        cloudId: "budget-123",
+      },
+      {
+        dir: path.join(budgetDir, "Secondary-Budget-456"),
+        value: "test2",
+        name: "Secondary Budget",
+        cloudId: "budget-456",
+      },
+    ];
 
-    for (const [dir, tableValue] of [
-      [firstBudgetPath, "test"],
-      [secondBudgetPath, "test2"],
-    ]) {
-      const dbPath = path.join(dir, "db.sqlite");
+    for (const meta of budgetsMeta) {
+      await fs.mkdir(meta.dir, { recursive: true });
+      const dbPath = path.join(meta.dir, "db.sqlite");
       const db = sqlite3(dbPath);
       db.exec(`
         CREATE TABLE IF NOT EXISTS kvcache (key TEXT);
         CREATE TABLE IF NOT EXISTS kvcache_key (key TEXT);
-        INSERT INTO kvcache(key) VALUES ('${tableValue}');
+        INSERT INTO kvcache(key) VALUES ('${meta.value}');
       `);
       db.close();
 
       await fs.writeFile(
-        path.join(dir, "metadata.json"),
-        JSON.stringify({ budgetName: `Budget ${tableValue}` }),
+        path.join(meta.dir, "metadata.json"),
+        JSON.stringify({ budgetName: meta.name }),
       );
     }
 
-    api.downloadBudget.mockImplementation(() =>
-      Promise.resolve({ id: { id: "local-budget-id" } }),
-    );
+    api.downloadBudget.mockImplementation((syncId) => {
+      const match = budgetsMeta.find((meta) => meta.cloudId === syncId);
+      return Promise.resolve({ id: { id: path.basename(match.dir) } });
+    });
 
-    api.getBudgets.mockResolvedValue([
-      { id: "local-budget-id", cloudFileId: "budget-123" },
-      { id: "local-budget-id", cloudFileId: "budget-456" },
-    ]);
+    api.getBudgets.mockResolvedValue(
+      budgetsMeta.map((meta) => ({
+        id: path.basename(meta.dir),
+        cloudFileId: meta.cloudId,
+        name: meta.name,
+      })),
+    );
 
     const config = {
       actual: {
@@ -173,8 +193,8 @@ describe("runBackup", () => {
     expect(files).toHaveLength(2);
     expect(files).toEqual(
       expect.arrayContaining([
-        expect.stringMatching(/^local-budget-id-.*\.zip$/),
-        expect.stringMatching(/^local-budget-id-budget-456.*\.zip$/),
+        expect.stringMatching(/^Primary-Budget-.*\.zip$/),
+        expect.stringMatching(/^Secondary-Budget-.*\.zip$/),
       ]),
     );
 
@@ -184,6 +204,7 @@ describe("runBackup", () => {
       {
         id: "local-budget-id",
         cloudFileId: "budget-123",
+        name: "Main Budget",
       },
     ]);
   });
