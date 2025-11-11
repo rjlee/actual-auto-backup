@@ -39,25 +39,20 @@ function formatRetention(retentionMeta) {
   return retentionMeta.description || "Not configured";
 }
 
-function formatSyncTargets(targetsMeta) {
-  if (!Array.isArray(targetsMeta) || targetsMeta.length === 0) {
-    return "Not configured";
+function formatTargetLabel(target) {
+  if (!target) return null;
+  if (typeof target === "string") {
+    const trimmed = target.trim();
+    return trimmed.length > 0 ? trimmed : null;
   }
-  return targetsMeta
-    .map((target) => {
-      if (!target) return null;
-      if (typeof target === "string") return target;
-      const parts = [];
-      if (target.budgetId) {
-        parts.push(target.budgetId);
-      }
-      if (target.syncId) {
-        parts.push(parts.length ? `→ ${target.syncId}` : target.syncId);
-      }
-      return parts.join(" ");
-    })
-    .filter(Boolean)
-    .join(", ");
+  const parts = [];
+  if (target.budgetId) {
+    parts.push(target.budgetId);
+  }
+  if (target.syncId) {
+    parts.push(parts.length ? `→ ${target.syncId}` : target.syncId);
+  }
+  return parts.length > 0 ? parts.join(" ") : null;
 }
 
 function formatRelativeTime(date) {
@@ -107,7 +102,7 @@ function updateOverview(meta = {}) {
     scheduleInfo.textContent = formatSchedule(meta.schedule);
   }
   if (syncTargetsInfo) {
-    syncTargetsInfo.textContent = formatSyncTargets(meta.targets);
+    renderSyncTargets(meta.targets);
   }
   if (retentionInfo) {
     retentionInfo.textContent = formatRetention(meta.retention);
@@ -259,6 +254,33 @@ function renderDestinations(status) {
   entries.forEach((entry) => {
     destinationList.appendChild(createDestinationItem(entry));
   });
+}
+
+function renderSyncTargets(targetsMeta) {
+  if (!syncTargetsInfo) return;
+  syncTargetsInfo.innerHTML = "";
+  const labels = Array.isArray(targetsMeta)
+    ? targetsMeta.map((target) => formatTargetLabel(target)).filter(Boolean)
+    : [];
+
+  if (labels.length === 0) {
+    syncTargetsInfo.textContent = "Not configured";
+    return;
+  }
+
+  if (labels.length === 1) {
+    syncTargetsInfo.textContent = labels[0];
+    return;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "mb-0 ps-3";
+  labels.forEach((label) => {
+    const item = document.createElement("li");
+    item.textContent = label;
+    list.appendChild(item);
+  });
+  syncTargetsInfo.appendChild(list);
 }
 
 async function unlinkProvider(provider) {
