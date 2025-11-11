@@ -1,3 +1,10 @@
+## [1.1.4](https://github.com/rjlee/actual-auto-backup/compare/v1.1.3...v1.1.4) (2025-11-11)
+
+
+### Bug Fixes
+
+* enable safe mode if config not present ([412a758](https://github.com/rjlee/actual-auto-backup/commit/412a7589755591b13b7aa714c66c4c2426204e2c))
+
 ## [1.1.3](https://github.com/rjlee/actual-auto-backup/compare/v1.1.2...v1.1.3) (2025-11-11)
 
 
