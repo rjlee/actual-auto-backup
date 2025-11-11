@@ -21,6 +21,24 @@ describe("config loader", () => {
     expect(config.local.retentionCount).toBe(7);
     expect(config.googleDrive.enabled).toBe(true);
     expect(config.googleDrive.credentialsPath).toBe(__filename);
+    expect(config.actual.syncTargets).toEqual([
+      { syncId: "budget-123", budgetId: null },
+    ]);
+  });
+
+  test("parses BACKUP_SYNC_ID with budget ids", () => {
+    process.env.ACTUAL_SERVER_URL = "https://example.com";
+    process.env.ACTUAL_PASSWORD = "secret";
+    process.env.ACTUAL_SYNC_ID = "share-default";
+    process.env.BACKUP_SYNC_ID = "budget-a:share-a,budget-b:share-b";
+
+    const config = loadConfig();
+    expect(config.actual.syncTargets).toEqual([
+      { syncId: "share-a", budgetId: "budget-a" },
+      { syncId: "share-b", budgetId: "budget-b" },
+    ]);
+    expect(config.actual.syncIds).toEqual(["share-a", "share-b"]);
+    expect(config.actual.syncId).toBe("share-a");
   });
 
   test("throws when required env missing", () => {

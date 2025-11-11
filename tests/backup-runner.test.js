@@ -6,14 +6,14 @@ const sqlite3 = require("better-sqlite3");
 jest.mock("@actual-app/api", () => ({
   init: jest.fn().mockResolvedValue(),
   downloadBudget: jest.fn().mockResolvedValue({
-    id: { id: "lee-family" },
+    id: { id: "primary-budget" },
   }),
   loadBudget: jest.fn().mockResolvedValue({}),
   shutdown: jest.fn().mockResolvedValue(),
   getBudgets: jest.fn().mockResolvedValue([
     {
-      id: "local-budget-id",
-      cloudFileId: "budget-123",
+      id: "primary-budget",
+      budgetId: "budget-primary",
       name: "Main Budget",
     },
   ]),
@@ -28,12 +28,12 @@ describe("runBackup", () => {
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "backup-runner-"));
     api.downloadBudget.mockClear();
-    api.downloadBudget.mockResolvedValue({ id: { id: "lee-family" } });
+    api.downloadBudget.mockResolvedValue({ id: { id: "primary-budget" } });
     api.getBudgets.mockClear();
     api.getBudgets.mockResolvedValue([
       {
-        id: "lee-family",
-        cloudFileId: "budget-123",
+        id: "primary-budget",
+        budgetId: "budget-primary",
         name: "Main Budget",
       },
     ]);
@@ -67,8 +67,14 @@ describe("runBackup", () => {
       actual: {
         serverUrl: "https://example.com",
         password: "secret",
-        syncId: "budget-123",
-        syncIds: ["budget-123"],
+        syncId: "sync-primary",
+        syncIds: ["sync-primary"],
+        syncTargets: [
+          {
+            syncId: "sync-primary",
+            budgetId: "budget-primary",
+          },
+        ],
         budgetDir,
         encryptionKey: null,
       },
@@ -107,16 +113,18 @@ describe("runBackup", () => {
     const budgetDir = path.join(tmpDir, "budget-multi");
     const budgetsMeta = [
       {
-        dir: path.join(budgetDir, "Primary-Budget-123"),
+        dir: path.join(budgetDir, "primary-budget"),
         value: "test",
         name: "Primary Budget",
-        cloudId: "budget-123",
+        syncId: "sync-primary",
+        budgetId: "budget-primary",
       },
       {
-        dir: path.join(budgetDir, "Secondary-Budget-456"),
+        dir: path.join(budgetDir, "secondary-budget"),
         value: "test2",
         name: "Secondary Budget",
-        cloudId: "budget-456",
+        syncId: "sync-secondary",
+        budgetId: "budget-secondary",
       },
     ];
 
@@ -138,14 +146,15 @@ describe("runBackup", () => {
     }
 
     api.downloadBudget.mockImplementation((syncId) => {
-      const match = budgetsMeta.find((meta) => meta.cloudId === syncId);
+      const match = budgetsMeta.find((meta) => meta.syncId === syncId);
+      expect(match).toBeDefined();
       return Promise.resolve({ id: { id: path.basename(match.dir) } });
     });
 
     api.getBudgets.mockResolvedValue(
       budgetsMeta.map((meta) => ({
         id: path.basename(meta.dir),
-        cloudFileId: meta.cloudId,
+        budgetId: meta.budgetId,
         name: meta.name,
       })),
     );
@@ -154,8 +163,12 @@ describe("runBackup", () => {
       actual: {
         serverUrl: "https://example.com",
         password: "secret",
-        syncId: "budget-123",
-        syncIds: ["budget-123", "budget-456"],
+        syncId: "sync-primary",
+        syncIds: budgetsMeta.map((meta) => meta.syncId),
+        syncTargets: budgetsMeta.map((meta) => ({
+          syncId: meta.syncId,
+          budgetId: meta.budgetId,
+        })),
         budgetDir,
         encryptionKey: null,
       },
@@ -180,14 +193,11 @@ describe("runBackup", () => {
 
     await runBackup(config, tokenStore);
 
-    expect(api.downloadBudget).toHaveBeenCalledWith(
-      "budget-123",
-      expect.any(Object),
-    );
-    expect(api.downloadBudget).toHaveBeenCalledWith(
-      "budget-456",
-      expect.any(Object),
-    );
+    expect(api.downloadBudget).toHaveBeenCalledTimes(2);
+    const syncIds = api.downloadBudget.mock.calls
+      .map(([syncId]) => syncId)
+      .sort();
+    expect(syncIds).toEqual(["sync-primary", "sync-secondary"].sort());
 
     const files = await fs.readdir(config.local.outputDir);
     expect(files).toHaveLength(2);
@@ -199,11 +209,11 @@ describe("runBackup", () => {
     );
 
     // Restore default mock behaviour for subsequent tests
-    api.downloadBudget.mockResolvedValue({ id: { id: "local-budget-id" } });
+    api.downloadBudget.mockResolvedValue({ id: { id: "primary-budget" } });
     api.getBudgets.mockResolvedValue([
       {
-        id: "local-budget-id",
-        cloudFileId: "budget-123",
+        id: "primary-budget",
+        budgetId: "budget-primary",
         name: "Main Budget",
       },
     ]);

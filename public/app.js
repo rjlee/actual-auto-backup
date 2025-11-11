@@ -43,7 +43,21 @@ function formatSyncTargets(targetsMeta) {
   if (!Array.isArray(targetsMeta) || targetsMeta.length === 0) {
     return "Not configured";
   }
-  return targetsMeta.join(", ");
+  return targetsMeta
+    .map((target) => {
+      if (!target) return null;
+      if (typeof target === "string") return target;
+      const parts = [];
+      if (target.budgetId) {
+        parts.push(target.budgetId);
+      }
+      if (target.syncId) {
+        parts.push(parts.length ? `→ ${target.syncId}` : target.syncId);
+      }
+      return parts.join(" ");
+    })
+    .filter(Boolean)
+    .join(", ");
 }
 
 function formatRelativeTime(date) {

@@ -208,14 +208,14 @@ async function readLastBackupTimestamp(config) {
 async function buildMeta(config) {
   const cron = config?.schedule?.cron || null;
   const lastBackupTs = await readLastBackupTimestamp(config);
-  const syncTargets = Array.isArray(config?.actual?.syncIds)
-    ? config.actual.syncIds.filter((id) => id && id.length > 0)
+  const syncTargetsRaw = Array.isArray(config?.actual?.syncTargets)
+    ? config.actual.syncTargets
     : [];
   const resolvedTargets =
-    syncTargets.length > 0
-      ? syncTargets
+    syncTargetsRaw.length > 0
+      ? syncTargetsRaw
       : config?.actual?.syncId
-        ? [config.actual.syncId]
+        ? [{ syncId: config.actual.syncId, budgetId: null }]
         : [];
 
   return {
@@ -235,7 +235,10 @@ async function buildMeta(config) {
           iso: new Date(lastBackupTs * 1000).toISOString(),
         }
       : null,
-    targets: resolvedTargets,
+    targets: resolvedTargets.map((target) => ({
+      syncId: target.syncId,
+      budgetId: target.budgetId || null,
+    })),
   };
 }
 

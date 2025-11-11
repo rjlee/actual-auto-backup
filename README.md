@@ -9,7 +9,7 @@ Backups created by this service can be restored directly through the Actual web 
 - **Native ZIP exports** – Uses `@actual-app/api` to generate the same archive produced by Actual's “Download backup” button.
 - **Configurable schedule** – Cron expression (default weekly: Mondays at 00:00 UTC) controls when exports run; on-demand runs available via `npm run backup`.
 - **Local retention** – Keep the most recent _N_ archives plus optional week/month snapshots to manage disk usage.
-- **Multiple budgets** – Provide a comma-separated list of sync IDs and the service backs up each one in sequence (archives are named after the budget display name, with the sync ID appended when needed).
+- **Multiple budgets** – Provide a comma-separated list of sync targets and the service backs up each one in sequence (archives are named after the budget display name, with the sync ID appended when needed). Targets can include an optional budget identifier in the form `budgetId:syncId` when a single sync contains multiple budgets.
 - **Cloud replication** – Independently toggle uploads for Google Drive, S3/B2-compatible storage, Dropbox, or WebDAV shares.
 - **Health monitoring** – Structured logging via `pino` and a `/bin/healthcheck.sh` script compatible with Docker health checks (reports healthy until the first backup completes, then enforces freshness thresholds).
 
@@ -38,18 +38,18 @@ npm start              # Start the cron scheduler
 
 All configuration is sourced from `env/actual-auto-backup.env` when running inside the stack, or from process environment variables directly. Key options:
 
-| Variable                                                        | Description                                                     | Default     |
-| --------------------------------------------------------------- | --------------------------------------------------------------- | ----------- |
-| `ACTUAL_SERVER_URL`                                             | Base URL of your Actual self-hosted instance                    | required    |
-| `ACTUAL_PASSWORD`                                               | Actual server password                                          | required    |
-| `ACTUAL_SYNC_ID`                                                | Primary budget sync ID (used if `BACKUP_SYNC_ID` unset)         | required    |
-| `BACKUP_SYNC_ID`                                                | Comma-separated sync IDs to export (overrides `ACTUAL_SYNC_ID`) | _unset_     |
-| `ACTUAL_BUDGET_ENCRYPTION_PASSWORD`                             | Budget encryption password (if enabled)                         | _unset_     |
-| `BACKUP_CRON`                                                   | Cron schedule (UTC)                                             | `0 0 * * 1` |
-| `ENABLE_LOCAL`                                                  | Write archives to local disk                                    | `true`      |
-| `LOCAL_RETENTION_COUNT`                                         | Keep the most recent _N_ archives                               | `4`         |
-| `LOCAL_RETENTION_WEEKS`                                         | Keep one archive per week for _N_ weeks                         | `0`         |
-| `ENABLE_GDRIVE`, `ENABLE_S3`, `ENABLE_DROPBOX`, `ENABLE_WEBDAV` | Toggle cloud uploads                                            | `false`     |
+| Variable                                                        | Description                                                                                                                                          | Default     |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `ACTUAL_SERVER_URL`                                             | Base URL of your Actual self-hosted instance                                                                                                         | required    |
+| `ACTUAL_PASSWORD`                                               | Actual server password                                                                                                                               | required    |
+| `ACTUAL_SYNC_ID`                                                | Primary budget sync ID (used if `BACKUP_SYNC_ID` unset)                                                                                              | required    |
+| `BACKUP_SYNC_ID`                                                | Comma-separated list of budgets to export. Each entry must be `BudgetID:SyncID` (as shown in Actual’s Advanced settings); overrides `ACTUAL_SYNC_ID` | _unset_     |
+| `ACTUAL_BUDGET_ENCRYPTION_PASSWORD`                             | Budget encryption password (if enabled)                                                                                                              | _unset_     |
+| `BACKUP_CRON`                                                   | Cron schedule (UTC)                                                                                                                                  | `0 0 * * 1` |
+| `ENABLE_LOCAL`                                                  | Write archives to local disk                                                                                                                         | `true`      |
+| `LOCAL_RETENTION_COUNT`                                         | Keep the most recent _N_ archives                                                                                                                    | `4`         |
+| `LOCAL_RETENTION_WEEKS`                                         | Keep one archive per week for _N_ weeks                                                                                                              | `0`         |
+| `ENABLE_GDRIVE`, `ENABLE_S3`, `ENABLE_DROPBOX`, `ENABLE_WEBDAV` | Toggle cloud uploads                                                                                                                                 | `false`     |
 
 See `env/actual-auto-backup.env.example` for a full list of supported options and comments covering each provider.
 
@@ -79,6 +79,16 @@ When using the bundled Traefik/auth compose file, the login cookie name defaults
 to `backup-auth` – update `AUTH_COOKIE_NAME` in the compose file (and set the
 same value in `env/actual-auto-backup.env`) if you want to run multiple
 services side-by-side.
+
+#### Multiple budgets
+
+- Add `BACKUP_SYNC_ID` with a comma-separated list of targets. Each target must
+  be specified as `BudgetID:SyncID`, matching the labels shown in Actual’s
+  **Settings → Advanced → Sync** panel. You can copy those values directly from
+  the UI; the Backup overview page also echoes the pairs currently in use.
+- Archives are named after the budget’s display name. If two targets resolve to
+  the same name the sync ID (or budget ID) is appended to keep filenames
+  unique.
 
 ### Provider-specific setup
 

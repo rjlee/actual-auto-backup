@@ -40,19 +40,48 @@ function loadConfig() {
 
   invariant(syncSources, "BACKUP_SYNC_ID or ACTUAL_SYNC_ID is required");
 
-  const syncIds = syncSources
-    .split(",")
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
+  const syncTargets = [];
+  if (backupSyncIdsRaw) {
+    const entries = backupSyncIdsRaw
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
 
-  invariant(
-    syncIds.length > 0,
-    "BACKUP_SYNC_ID or ACTUAL_SYNC_ID must include at least one sync id",
-  );
+    invariant(
+      entries.length > 0,
+      "BACKUP_SYNC_ID must include at least one entry",
+    );
 
-  const uniqueSyncIds = Array.from(new Set(syncIds));
+    const seenTargets = new Set();
 
-  const primarySyncId = uniqueSyncIds[0];
+    for (const entry of entries) {
+      const [budgetIdRaw, syncIdRaw] = entry.split(":");
+      invariant(
+        syncIdRaw,
+        "BACKUP_SYNC_ID entries must be in the form BudgetID:SyncID",
+      );
+      const budgetId = budgetIdRaw.trim();
+      const syncIdValue = syncIdRaw.trim();
+      invariant(
+        budgetId && syncIdValue,
+        "BACKUP_SYNC_ID entries must contain both BudgetID and SyncID",
+      );
+      const key = `${budgetId}::${syncIdValue}`;
+      if (seenTargets.has(key)) continue;
+      seenTargets.add(key);
+      syncTargets.push({ budgetId, syncId: syncIdValue });
+    }
+
+    invariant(
+      syncTargets.length > 0,
+      "BACKUP_SYNC_ID must include at least one valid entry",
+    );
+  } else {
+    invariant(syncId, "ACTUAL_SYNC_ID is required");
+    syncTargets.push({ budgetId: null, syncId });
+  }
+
+  const primarySyncId = syncTargets[0].syncId;
 
   const budgetDir = process.env.BUDGET_DIR || "/app/data/budget";
   const backupOutput = process.env.BACKUP_OUTPUT || "/app/data/backups";
@@ -66,7 +95,8 @@ function loadConfig() {
       serverUrl,
       password,
       syncId: primarySyncId,
-      syncIds: uniqueSyncIds,
+      syncIds: Array.from(new Set(syncTargets.map((target) => target.syncId))),
+      syncTargets,
       budgetDir: path.isAbsolute(budgetDir)
         ? budgetDir
         : path.join(process.cwd(), budgetDir),

@@ -28,7 +28,17 @@ async function main() {
     return;
   }
 
-  logger.info({ cron: config.schedule.cron }, "scheduling backups");
+  const targetsLog = (config.actual.syncTargets || []).map((target) => ({
+    syncId: target.syncId,
+    budgetId: target.budgetId,
+  }));
+  logger.info(
+    {
+      cron: config.schedule.cron,
+      targets: targetsLog,
+    },
+    "scheduling backups",
+  );
   cron.schedule(config.schedule.cron, async () => {
     try {
       await runBackup(config, tokenStore);

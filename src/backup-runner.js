@@ -45,6 +45,21 @@ async function safeGetBudgets() {
   }
 }
 
+function normalizeIdentifier(value) {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getBudgetIdentifier(budget) {
+  if (!budget) return null;
+  return (
+    normalizeIdentifier(budget.budgetId) ??
+    normalizeIdentifier(budget.cloudFileId) ??
+    null
+  );
+}
+
 function logBudgetSummary(budgets, context = {}) {
   if (!Array.isArray(budgets)) {
     return;
@@ -54,7 +69,7 @@ function logBudgetSummary(budgets, context = {}) {
       ...context,
       budgets: budgets.map((b) => ({
         id: b?.id,
-        cloudFileId: b?.cloudFileId,
+        budgetId: getBudgetIdentifier(b),
         name: b?.name,
       })),
     },
@@ -84,6 +99,7 @@ function extractBudgetIdFromDownload(downloadResult) {
 
 function collectCandidateBudgetIds(syncId, downloadResult, budgets) {
   const raw = [];
+  const normalizedSyncId = normalizeIdentifier(syncId);
   const push = (value) => {
     if (typeof value !== "string") return;
     const trimmed = value.trim();
@@ -94,13 +110,20 @@ function collectCandidateBudgetIds(syncId, downloadResult, budgets) {
   push(extractBudgetIdFromDownload(downloadResult));
 
   if (Array.isArray(budgets) && budgets.length > 0) {
-    const byCloud = budgets.find((b) => b?.cloudFileId === syncId)?.id;
-    push(byCloud);
+    const byBudgetId = budgets.find(
+      (b) => getBudgetIdentifier(b) === normalizedSyncId,
+    )?.id;
+    push(byBudgetId);
 
-    const byId = budgets.find((b) => b?.id === syncId)?.id;
+    const byId = budgets.find(
+      (b) => normalizeIdentifier(b?.id) === normalizedSyncId,
+    )?.id;
     push(byId);
 
-    budgets.forEach((b) => push(b?.id));
+    budgets.forEach((b) => {
+      push(b?.id);
+      push(getBudgetIdentifier(b));
+    });
   }
 
   push(syncId);
@@ -120,8 +143,29 @@ async function resolveBudgetResources({
   downloadResult,
   budgets,
   budgetDir,
+  targetBudgetId,
 }) {
+  const normalizedTargetBudgetId = normalizeIdentifier(targetBudgetId);
   const candidates = collectCandidateBudgetIds(syncId, downloadResult, budgets);
+
+  if (normalizedTargetBudgetId && Array.isArray(budgets)) {
+    const preferred = budgets
+      .filter(
+        (entry) => getBudgetIdentifier(entry) === normalizedTargetBudgetId,
+      )
+      .map((entry) => entry?.id)
+      .filter(Boolean)
+      .reverse();
+    for (const id of preferred) {
+      if (!candidates.includes(id)) {
+        candidates.unshift(id);
+      } else {
+        const idx = candidates.indexOf(id);
+        candidates.splice(idx, 1);
+        candidates.unshift(id);
+      }
+    }
+  }
 
   for (const candidate of candidates) {
     const dbFile = path.join(budgetDir, candidate, "db.sqlite");
@@ -210,9 +254,10 @@ function withErrorHandling(
   });
 }
 
-async function exportBudgetBuffer(config, syncIdOverride) {
+async function exportBudgetBuffer(config, target) {
   const { serverUrl, password, encryptionKey, budgetDir } = config.actual;
-  const syncId = syncIdOverride ?? config.actual.syncId;
+  const syncId = target?.syncId ?? target ?? config.actual.syncId;
+  const targetBudgetId = target?.budgetId || null;
   await ensureDir(budgetDir);
   // Reset any previous budget state so we don't reuse local metadata
   await resetActualSession();
@@ -234,32 +279,59 @@ async function exportBudgetBuffer(config, syncIdOverride) {
     );
   }
 
-  logger.info({ downloadResult, syncId }, "downloadBudget result");
+  logger.info(
+    { downloadResult, syncId, targetBudgetId },
+    "downloadBudget result",
+  );
 
   const budgets = await safeGetBudgets();
-  logBudgetSummary(budgets, { syncId });
+  logBudgetSummary(budgets, {
+    syncId,
+    budgetId: targetBudgetId,
+  });
 
   const matchedBudget = Array.isArray(budgets)
     ? budgets.find(
-        (entry) => entry?.cloudFileId === syncId || entry?.id === syncId,
+        (entry) =>
+          (targetBudgetId &&
+            getBudgetIdentifier(entry) ===
+              normalizeIdentifier(targetBudgetId)) ||
+          getBudgetIdentifier(entry) === normalizeIdentifier(syncId) ||
+          normalizeIdentifier(entry?.id) === normalizeIdentifier(syncId),
       )
     : null;
+
+  if (
+    targetBudgetId &&
+    (!matchedBudget ||
+      getBudgetIdentifier(matchedBudget) !==
+        normalizeIdentifier(targetBudgetId))
+  ) {
+    logger.warn(
+      { syncId, targetBudgetId },
+      "requested budget id not found for sync target; falling back",
+    );
+  }
 
   const { budgetId, dbFile, dbExists } = await resolveBudgetResources({
     syncId,
     downloadResult,
     budgets,
     budgetDir,
+    targetBudgetId,
   });
 
   if (!dbExists) {
     logger.warn(
-      { dbFile, syncId, resolvedBudgetId: budgetId },
+      { dbFile, syncId, targetBudgetId, resolvedBudgetId: budgetId },
       "budget directory missing after download, attempting load without local cache",
     );
   }
 
-  logger.info({ budgetId, dbFile, syncId }, "loading budget for export");
+  logger.info(
+    { budgetId, dbFile, syncId, targetBudgetId },
+    "loading budget for export",
+  );
 
   await api.loadBudget(budgetId);
 
@@ -271,10 +343,12 @@ async function exportBudgetBuffer(config, syncIdOverride) {
     buffer,
     budgetId,
     displayName:
-      metadataInfo?.name ||
-      matchedBudget?.name ||
-      matchedBudget?.id ||
+      metadataInfo?.name?.toString()?.trim() ||
+      matchedBudget?.name?.toString()?.trim() ||
+      matchedBudget?.id?.toString()?.trim() ||
       budgetId,
+    syncId,
+    targetBudgetId,
   };
 }
 
@@ -310,31 +384,41 @@ async function markSuccess(outputDir) {
   );
 }
 
-async function runBackupForSync(config, tokenStore, syncId, usedBudgetIds) {
-  logger.info({ syncId }, "starting backup job");
+async function runBackupForSync(config, tokenStore, syncTarget, usedBudgetIds) {
+  const { syncId: targetSyncId, budgetId: targetBudgetId } = syncTarget;
+  logger.info(
+    { syncId: targetSyncId, budgetId: targetBudgetId },
+    "starting backup job",
+  );
   let buffer;
   let resolvedBudgetId;
   let displayName;
   try {
-    const result = await exportBudgetBuffer(config, syncId);
+    const result = await exportBudgetBuffer(config, syncTarget);
     buffer = result.buffer;
     resolvedBudgetId = result.budgetId;
     displayName = result.displayName;
   } catch (err) {
-    logger.error({ err, syncId }, "failed to export budget");
+    logger.error(
+      { err, syncId: targetSyncId, budgetId: targetBudgetId },
+      "failed to export budget",
+    );
     throw err;
   } finally {
     try {
       await api.shutdown();
     } catch (err) {
-      logger.warn({ err, syncId }, "failed to shutdown Actual API cleanly");
+      logger.warn(
+        { err, syncId: targetSyncId, budgetId: targetBudgetId },
+        "failed to shutdown Actual API cleanly",
+      );
     }
   }
 
-  const budgetId = resolvedBudgetId || syncId;
+  const budgetId = resolvedBudgetId || targetSyncId;
   const archiveBudgetId = makeUniqueBudgetId(
     displayName || budgetId,
-    syncId,
+    targetBudgetId || targetSyncId,
     usedBudgetIds,
   );
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
@@ -346,11 +430,15 @@ async function runBackupForSync(config, tokenStore, syncId, usedBudgetIds) {
     config,
     tokenStore,
     logger,
-    syncId,
+    syncId: targetSyncId,
+    budgetIdOverride: targetBudgetId,
   });
 
   if (tasks.length === 0) {
-    logger.warn({ syncId }, "no destinations enabled; skipping");
+    logger.warn(
+      { syncId: targetSyncId, budgetId: targetBudgetId },
+      "no destinations enabled; skipping",
+    );
   } else {
     await Promise.all(tasks);
   }
@@ -361,18 +449,24 @@ async function runBackupForSync(config, tokenStore, syncId, usedBudgetIds) {
     await markSuccess(markerTarget);
   }
 
-  logger.info({ syncId }, "backup job complete");
+  logger.info(
+    { syncId: targetSyncId, budgetId: targetBudgetId },
+    "backup job complete",
+  );
 }
 
 async function runBackup(config, tokenStore) {
-  const syncIds = Array.isArray(config.actual.syncIds)
-    ? config.actual.syncIds.filter((id) => id && id.length > 0)
+  const targets = Array.isArray(config.actual.syncTargets)
+    ? config.actual.syncTargets
     : [];
-  const targets = syncIds.length > 0 ? syncIds : [config.actual.syncId];
+  const resolvedTargets =
+    targets.length > 0
+      ? targets
+      : [{ syncId: config.actual.syncId, budgetId: null }];
   const usedBudgetIds = new Set();
 
-  for (const syncId of targets) {
-    await runBackupForSync(config, tokenStore, syncId, usedBudgetIds);
+  for (const target of resolvedTargets) {
+    await runBackupForSync(config, tokenStore, target, usedBudgetIds);
   }
 }
 
@@ -384,6 +478,7 @@ async function createDestinationTasks({
   tokenStore,
   logger: loggerInstance,
   syncId,
+  budgetIdOverride,
 }) {
   const tasks = [];
 
@@ -398,7 +493,7 @@ async function createDestinationTasks({
           ),
         "local backup failed",
         loggerInstance,
-        { syncId },
+        { syncId, budgetId: budgetIdOverride },
       ),
     );
   }
@@ -454,7 +549,7 @@ async function createDestinationTasks({
         () => uploadToDrive(buffer, driveOptions, loggerInstance),
         "google drive upload failed",
         loggerInstance,
-        { syncId },
+        { syncId, budgetId: budgetIdOverride },
       ),
     );
   }
@@ -477,7 +572,7 @@ async function createDestinationTasks({
           ),
         "s3 upload failed",
         loggerInstance,
-        { syncId },
+        { syncId, budgetId: budgetIdOverride },
       ),
     );
   }
@@ -517,7 +612,7 @@ async function createDestinationTasks({
         () => uploadToDropbox(buffer, dropboxOptions, loggerInstance),
         "dropbox upload failed",
         loggerInstance,
-        { syncId },
+        { syncId, budgetId: budgetIdOverride },
       ),
     );
   }
@@ -540,7 +635,7 @@ async function createDestinationTasks({
           ),
         "webdav upload failed",
         loggerInstance,
-        { syncId },
+        { syncId, budgetId: budgetIdOverride },
       ),
     );
   }
