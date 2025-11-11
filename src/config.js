@@ -55,16 +55,25 @@ function loadConfig() {
     const seenTargets = new Set();
 
     for (const entry of entries) {
-      const [budgetIdRaw, syncIdRaw] = entry.split(":");
+      const [first, second] = entry.split(":");
+      if (typeof second === "undefined") {
+        const syncIdValue = first.trim();
+        invariant(
+          syncIdValue.length > 0,
+          "BACKUP_SYNC_ID entries must include a sync ID",
+        );
+        const key = `::${syncIdValue}`;
+        if (seenTargets.has(key)) continue;
+        seenTargets.add(key);
+        syncTargets.push({ budgetId: null, syncId: syncIdValue });
+        continue;
+      }
+
+      const budgetId = first.trim();
+      const syncIdValue = second.trim();
       invariant(
-        syncIdRaw,
-        "BACKUP_SYNC_ID entries must be in the form BudgetID:SyncID",
-      );
-      const budgetId = budgetIdRaw.trim();
-      const syncIdValue = syncIdRaw.trim();
-      invariant(
-        budgetId && syncIdValue,
-        "BACKUP_SYNC_ID entries must contain both BudgetID and SyncID",
+        budgetId.length > 0 && syncIdValue.length > 0,
+        "BACKUP_SYNC_ID entries must include both budget and sync IDs when using the BudgetID:SyncID form",
       );
       const key = `${budgetId}::${syncIdValue}`;
       if (seenTargets.has(key)) continue;

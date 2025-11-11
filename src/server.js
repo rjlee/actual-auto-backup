@@ -218,6 +218,14 @@ async function buildMeta(config) {
         ? [{ syncId: config.actual.syncId, budgetId: null }]
         : [];
 
+  const errors = [];
+  if (config?.runtime?.configError) {
+    errors.push({
+      message: config.runtime.configError.message,
+      details: config.runtime.configError.details,
+    });
+  }
+
   return {
     schedule: {
       cron,
@@ -239,6 +247,7 @@ async function buildMeta(config) {
       syncId: target.syncId,
       budgetId: target.budgetId || null,
     })),
+    errors,
   };
 }
 
@@ -258,6 +267,9 @@ function createRouter(config, tokenStore, runBackupFn) {
   app.use(express.static(publicDir));
 
   let running = false;
+
+  const hasConfigError = Boolean(config?.runtime?.configError);
+  const configErrorMessage = config?.runtime?.configError?.message;
 
   async function getStatus() {
     const googleLinked = tokenStore ? await tokenStore.has("google") : false;
@@ -294,6 +306,7 @@ function createRouter(config, tokenStore, runBackupFn) {
         status,
         running,
         meta,
+        errors: meta.errors || [],
       });
     } catch (err) {
       logger.error({ err }, "failed to retrieve status");
@@ -302,6 +315,13 @@ function createRouter(config, tokenStore, runBackupFn) {
   });
 
   app.post("/api/backup", async (req, res) => {
+    if (hasConfigError) {
+      return res.status(503).json({
+        error:
+          configErrorMessage ||
+          "Backups disabled due to configuration error; check server logs.",
+      });
+    }
     if (running) {
       return res.status(409).json({ error: "Backup already in progress" });
     }
@@ -318,6 +338,13 @@ function createRouter(config, tokenStore, runBackupFn) {
   });
 
   app.post("/api/google/unlink", async (req, res) => {
+    if (hasConfigError) {
+      return res.status(503).json({
+        error:
+          configErrorMessage ||
+          "Google Drive integration unavailable due to configuration error.",
+      });
+    }
     if (!tokenStore) {
       return res.status(400).json({ error: "Token store unavailable" });
     }
@@ -326,6 +353,13 @@ function createRouter(config, tokenStore, runBackupFn) {
   });
 
   app.post("/api/dropbox/unlink", async (req, res) => {
+    if (hasConfigError) {
+      return res.status(503).json({
+        error:
+          configErrorMessage ||
+          "Dropbox integration unavailable due to configuration error.",
+      });
+    }
     if (!tokenStore) {
       return res.status(400).json({ error: "Token store unavailable" });
     }
@@ -341,6 +375,13 @@ function createRouter(config, tokenStore, runBackupFn) {
   }
 
   app.get("/auth/google", (req, res) => {
+    if (hasConfigError) {
+      return res.status(503).json({
+        error:
+          configErrorMessage ||
+          "Google Drive OAuth disabled due to configuration error.",
+      });
+    }
     if (config.googleDrive.mode !== "oauth") {
       return res
         .status(400)
@@ -385,6 +426,14 @@ function createRouter(config, tokenStore, runBackupFn) {
       return res.status(400).send("Invalid state");
     }
     pendingStates.delete(state);
+    if (hasConfigError) {
+      return res
+        .status(503)
+        .send(
+          configErrorMessage ||
+            "Google Drive OAuth disabled due to configuration error.",
+        );
+    }
     const redirectUri = buildRedirectUrl(
       ensurePublicUrl(),
       "/oauth/google/callback",
@@ -410,6 +459,13 @@ function createRouter(config, tokenStore, runBackupFn) {
   });
 
   app.get("/auth/dropbox", async (req, res) => {
+    if (hasConfigError) {
+      return res.status(503).json({
+        error:
+          configErrorMessage ||
+          "Dropbox OAuth disabled due to configuration error.",
+      });
+    }
     if (!config.dropbox.enabled) {
       return res.status(400).json({ error: "Dropbox integration disabled" });
     }
@@ -458,6 +514,14 @@ function createRouter(config, tokenStore, runBackupFn) {
       return res.status(400).send("Invalid state");
     }
     pendingStates.delete(state);
+    if (hasConfigError) {
+      return res
+        .status(503)
+        .send(
+          configErrorMessage ||
+            "Dropbox OAuth disabled due to configuration error.",
+        );
+    }
     const redirectUri = buildRedirectUrl(
       ensurePublicUrl(),
       "/oauth/dropbox/callback",

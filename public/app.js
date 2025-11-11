@@ -124,11 +124,29 @@ async function loadStatus() {
       const text = await res.text();
       throw new Error(text || "status request failed");
     }
-    const { status, running, meta } = await res.json();
-    renderDestinations(status);
+    const { status, running, meta, errors } = await res.json();
+    renderDestinations(status || {});
     updateOverview(meta);
-    backupBtn.disabled = running;
-    hideAlert();
+    const metaErrors = Array.isArray(meta?.errors) ? meta.errors : [];
+    const responseErrors = Array.isArray(errors) ? errors : [];
+    const combinedErrors = [...metaErrors, ...responseErrors].filter(Boolean);
+    if (backupBtn) {
+      backupBtn.disabled = running || combinedErrors.length > 0;
+    }
+    if (combinedErrors.length > 0) {
+      const message = combinedErrors
+        .map((entry) => {
+          if (!entry) return null;
+          if (typeof entry === "string") return entry;
+          if (entry.message) return entry.message;
+          return JSON.stringify(entry);
+        })
+        .filter(Boolean)
+        .join("\n");
+      showAlert(message || "Configuration error detected.", "danger");
+    } else {
+      hideAlert();
+    }
   } catch (err) {
     updateOverview();
     showAlert(`Failed to load status: ${err.message}`, "danger");
@@ -171,42 +189,54 @@ function createDestinationItem({
 }
 
 function renderDestinations(status) {
+  const safeStatus = {
+    local: { enabled: false, ...(status?.local || {}) },
+    google: {
+      enabled: false,
+      linked: false,
+      mode: "service-account",
+      ...(status?.google || {}),
+    },
+    dropbox: { enabled: false, linked: false, ...(status?.dropbox || {}) },
+    s3: { enabled: false, ...(status?.s3 || {}) },
+    webdav: { enabled: false, ...(status?.webdav || {}) },
+  };
   destinationList.innerHTML = "";
   const entries = [
     {
       id: "local",
       label: "Local storage",
-      enabled: status.local.enabled,
-      linked: status.local.enabled,
-      statusText: status.local.enabled
+      enabled: safeStatus.local.enabled,
+      linked: safeStatus.local.enabled,
+      statusText: safeStatus.local.enabled
         ? "Enabled (writes inside the container volume)"
         : "Disabled",
     },
     {
       id: "google",
       label: "Google Drive",
-      enabled: status.google.enabled,
-      linked: status.google.linked,
+      enabled: safeStatus.google.enabled,
+      linked: safeStatus.google.linked,
       linkUrl:
-        status.google.enabled && status.google.mode === "oauth"
+        safeStatus.google.enabled && safeStatus.google.mode === "oauth"
           ? `${basePath()}/auth/google`
           : null,
       unlinkAction: unlinkProvider,
-      statusText: status.google.enabled
-        ? status.google.linked
-          ? `Linked (${status.google.mode === "oauth" ? "OAuth" : "Service account"})`
-          : `Not linked (${status.google.mode === "oauth" ? "OAuth" : "Service account"})`
+      statusText: safeStatus.google.enabled
+        ? safeStatus.google.linked
+          ? `Linked (${safeStatus.google.mode === "oauth" ? "OAuth" : "Service account"})`
+          : `Not linked (${safeStatus.google.mode === "oauth" ? "OAuth" : "Service account"})`
         : "Disabled",
     },
     {
       id: "dropbox",
       label: "Dropbox",
-      enabled: status.dropbox.enabled,
-      linked: status.dropbox.linked,
-      linkUrl: status.dropbox.enabled ? `${basePath()}/auth/dropbox` : null,
+      enabled: safeStatus.dropbox.enabled,
+      linked: safeStatus.dropbox.linked,
+      linkUrl: safeStatus.dropbox.enabled ? `${basePath()}/auth/dropbox` : null,
       unlinkAction: unlinkProvider,
-      statusText: status.dropbox.enabled
-        ? status.dropbox.linked
+      statusText: safeStatus.dropbox.enabled
+        ? safeStatus.dropbox.linked
           ? "Linked"
           : "Not linked"
         : "Disabled",
@@ -214,16 +244,16 @@ function renderDestinations(status) {
     {
       id: "s3",
       label: "S3 / compatible",
-      enabled: status.s3.enabled,
-      linked: status.s3.enabled,
-      statusText: status.s3.enabled ? "Configured" : "Disabled",
+      enabled: safeStatus.s3.enabled,
+      linked: safeStatus.s3.enabled,
+      statusText: safeStatus.s3.enabled ? "Configured" : "Disabled",
     },
     {
       id: "webdav",
       label: "WebDAV / Nextcloud",
-      enabled: status.webdav.enabled,
-      linked: status.webdav.enabled,
-      statusText: status.webdav.enabled ? "Configured" : "Disabled",
+      enabled: safeStatus.webdav.enabled,
+      linked: safeStatus.webdav.enabled,
+      statusText: safeStatus.webdav.enabled ? "Configured" : "Disabled",
     },
   ];
   entries.forEach((entry) => {

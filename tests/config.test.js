@@ -41,6 +41,20 @@ describe("config loader", () => {
     expect(config.actual.syncId).toBe("share-a");
   });
 
+  test("parses BACKUP_SYNC_ID with plain sync ids", () => {
+    process.env.ACTUAL_SERVER_URL = "https://example.com";
+    process.env.ACTUAL_PASSWORD = "secret";
+    process.env.BACKUP_SYNC_ID = "share-a,share-b";
+
+    const config = loadConfig();
+    expect(config.actual.syncTargets).toEqual([
+      { syncId: "share-a", budgetId: null },
+      { syncId: "share-b", budgetId: null },
+    ]);
+    expect(config.actual.syncIds).toEqual(["share-a", "share-b"]);
+    expect(config.actual.syncId).toBe("share-a");
+  });
+
   test("throws when required env missing", () => {
     delete process.env.ACTUAL_SERVER_URL;
     delete process.env.ACTUAL_PASSWORD;
