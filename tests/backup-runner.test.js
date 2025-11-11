@@ -121,16 +121,13 @@ describe("runBackup", () => {
       );
     }
 
-    api.downloadBudget.mockImplementation((syncId) => {
-      if (syncId === "budget-456") {
-        return Promise.resolve({ id: { id: "local-budget-id-2" } });
-      }
-      return Promise.resolve({ id: { id: "local-budget-id" } });
-    });
+    api.downloadBudget.mockImplementation(() =>
+      Promise.resolve({ id: { id: "local-budget-id" } }),
+    );
 
     api.getBudgets.mockResolvedValue([
       { id: "local-budget-id", cloudFileId: "budget-123" },
-      { id: "local-budget-id-2", cloudFileId: "budget-456" },
+      { id: "local-budget-id", cloudFileId: "budget-456" },
     ]);
 
     const config = {
@@ -177,7 +174,7 @@ describe("runBackup", () => {
     expect(files).toEqual(
       expect.arrayContaining([
         expect.stringMatching(/^local-budget-id-.*\.zip$/),
-        expect.stringMatching(/^local-budget-id-2-.*\.zip$/),
+        expect.stringMatching(/^local-budget-id-budget-456.*\.zip$/),
       ]),
     );
 

@@ -263,6 +263,29 @@ async function exportBudgetBuffer(config, syncIdOverride) {
   };
 }
 
+function sanitizeIdentifier(value) {
+  if (!value) return "sync";
+  return value.replace(/[^a-zA-Z0-9-_]/g, "-");
+}
+
+function makeUniqueBudgetId(baseId, syncId, usedIds) {
+  const initial = baseId || syncId || "budget";
+  let candidate = initial;
+  const syncSuffix = sanitizeIdentifier(syncId);
+
+  if (usedIds.has(candidate)) {
+    candidate = `${initial}-${syncSuffix}`;
+    let counter = 1;
+    while (usedIds.has(candidate)) {
+      candidate = `${initial}-${syncSuffix}-${counter}`;
+      counter += 1;
+    }
+  }
+
+  usedIds.add(candidate);
+  return candidate;
+}
+
 async function markSuccess(outputDir) {
   const markerDir = path.resolve(outputDir, "..");
   await fs.mkdir(markerDir, { recursive: true });
@@ -272,7 +295,7 @@ async function markSuccess(outputDir) {
   );
 }
 
-async function runBackupForSync(config, tokenStore, syncId) {
+async function runBackupForSync(config, tokenStore, syncId, usedBudgetIds) {
   logger.info({ syncId }, "starting backup job");
   let buffer;
   let resolvedBudgetId;
@@ -292,11 +315,16 @@ async function runBackupForSync(config, tokenStore, syncId) {
   }
 
   const budgetId = resolvedBudgetId || syncId;
+  const archiveBudgetId = makeUniqueBudgetId(
+    budgetId,
+    syncId,
+    usedBudgetIds,
+  );
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
 
   const tasks = await createDestinationTasks({
     buffer,
-    budgetId,
+    budgetId: archiveBudgetId,
     timestamp,
     config,
     tokenStore,
@@ -324,9 +352,10 @@ async function runBackup(config, tokenStore) {
     ? config.actual.syncIds.filter((id) => id && id.length > 0)
     : [];
   const targets = syncIds.length > 0 ? syncIds : [config.actual.syncId];
+  const usedBudgetIds = new Set();
 
   for (const syncId of targets) {
-    await runBackupForSync(config, tokenStore, syncId);
+    await runBackupForSync(config, tokenStore, syncId, usedBudgetIds);
   }
 }
 
