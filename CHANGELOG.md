@@ -1,3 +1,10 @@
+## [1.1.5](https://github.com/rjlee/actual-auto-backup/compare/v1.1.4...v1.1.5) (2025-11-11)
+
+
+### Bug Fixes
+
+* tidy display of budet id ([1ba629c](https://github.com/rjlee/actual-auto-backup/commit/1ba629cf3ffb182548df4c5b54440b09df7d0c74))
+
 ## [1.1.4](https://github.com/rjlee/actual-auto-backup/compare/v1.1.3...v1.1.4) (2025-11-11)
 
 
