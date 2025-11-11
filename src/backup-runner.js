@@ -45,12 +45,13 @@ async function safeGetBudgets() {
   }
 }
 
-function logBudgetSummary(budgets) {
+function logBudgetSummary(budgets, context = {}) {
   if (!Array.isArray(budgets)) {
     return;
   }
   logger.info(
     {
+      ...context,
       budgets: budgets.map((b) => ({
         id: b?.id,
         cloudFileId: b?.cloudFileId,
@@ -162,14 +163,18 @@ async function createSanitizedDatabaseBuffer(dbFile) {
   }
 }
 
-async function readMetadataBuffer(budgetDir, budgetId) {
+async function readMetadataBuffer(budgetDir, budgetId, syncId) {
   const metadataPath = path.join(budgetDir, budgetId, "metadata.json");
   try {
     const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
     metadata.resetClock = true;
     return Buffer.from(JSON.stringify(metadata));
   } catch (err) {
-    logger.warn({ err }, "failed to read metadata.json");
+    const context = { err };
+    if (typeof syncId !== "undefined") {
+      context.syncId = syncId;
+    }
+    logger.warn(context, "failed to read metadata.json");
     return null;
   }
 }
@@ -183,16 +188,27 @@ function buildZipBuffer(dbContent, metadataBuffer) {
   return zip.toBuffer();
 }
 
-function withErrorHandling(promiseFactory, message, loggerInstance) {
+function withErrorHandling(
+  promiseFactory,
+  message,
+  loggerInstance,
+  context = {},
+) {
   return promiseFactory().catch((err) => {
-    loggerInstance.error({ err }, message);
+    const logContext = { err };
+    for (const [key, value] of Object.entries(context)) {
+      if (typeof value !== "undefined") {
+        logContext[key] = value;
+      }
+    }
+    loggerInstance.error(logContext, message);
     throw err;
   });
 }
 
-async function exportBudgetBuffer(config) {
-  const { serverUrl, password, syncId, encryptionKey, budgetDir } =
-    config.actual;
+async function exportBudgetBuffer(config, syncIdOverride) {
+  const { serverUrl, password, encryptionKey, budgetDir } = config.actual;
+  const syncId = syncIdOverride ?? config.actual.syncId;
   await ensureDir(budgetDir);
   // Reset any previous budget state so we don't reuse local metadata
   await resetActualSession();
@@ -214,10 +230,10 @@ async function exportBudgetBuffer(config) {
     );
   }
 
-  logger.info({ downloadResult }, "downloadBudget result");
+  logger.info({ downloadResult, syncId }, "downloadBudget result");
 
   const budgets = await safeGetBudgets();
-  logBudgetSummary(budgets);
+  logBudgetSummary(budgets, { syncId });
 
   const { budgetId, dbFile, dbExists } = await resolveBudgetResources({
     syncId,
@@ -233,12 +249,12 @@ async function exportBudgetBuffer(config) {
     );
   }
 
-  logger.info({ budgetId, dbFile }, "loading budget for export");
+  logger.info({ budgetId, dbFile, syncId }, "loading budget for export");
 
   await api.loadBudget(budgetId);
 
   const dbContent = await createSanitizedDatabaseBuffer(dbFile);
-  const metadataBuffer = await readMetadataBuffer(budgetDir, budgetId);
+  const metadataBuffer = await readMetadataBuffer(budgetDir, budgetId, syncId);
   const buffer = buildZipBuffer(dbContent, metadataBuffer);
 
   return {
@@ -256,26 +272,26 @@ async function markSuccess(outputDir) {
   );
 }
 
-async function runBackup(config, tokenStore) {
-  logger.info("starting backup job");
+async function runBackupForSync(config, tokenStore, syncId) {
+  logger.info({ syncId }, "starting backup job");
   let buffer;
   let resolvedBudgetId;
   try {
-    const result = await exportBudgetBuffer(config);
+    const result = await exportBudgetBuffer(config, syncId);
     buffer = result.buffer;
     resolvedBudgetId = result.budgetId;
   } catch (err) {
-    logger.error({ err }, "failed to export budget");
+    logger.error({ err, syncId }, "failed to export budget");
     throw err;
   } finally {
     try {
       await api.shutdown();
     } catch (err) {
-      logger.warn({ err }, "failed to shutdown Actual API cleanly");
+      logger.warn({ err, syncId }, "failed to shutdown Actual API cleanly");
     }
   }
 
-  const budgetId = resolvedBudgetId || config.actual.syncId;
+  const budgetId = resolvedBudgetId || syncId;
   const timestamp = new Date().toISOString().replace(/[:]/g, "-");
 
   const tasks = await createDestinationTasks({
@@ -285,10 +301,11 @@ async function runBackup(config, tokenStore) {
     config,
     tokenStore,
     logger,
+    syncId,
   });
 
   if (tasks.length === 0) {
-    logger.warn("no destinations enabled; skipping");
+    logger.warn({ syncId }, "no destinations enabled; skipping");
   } else {
     await Promise.all(tasks);
   }
@@ -299,7 +316,18 @@ async function runBackup(config, tokenStore) {
     await markSuccess(markerTarget);
   }
 
-  logger.info("backup job complete");
+  logger.info({ syncId }, "backup job complete");
+}
+
+async function runBackup(config, tokenStore) {
+  const syncIds = Array.isArray(config.actual.syncIds)
+    ? config.actual.syncIds.filter((id) => id && id.length > 0)
+    : [];
+  const targets = syncIds.length > 0 ? syncIds : [config.actual.syncId];
+
+  for (const syncId of targets) {
+    await runBackupForSync(config, tokenStore, syncId);
+  }
 }
 
 async function createDestinationTasks({
@@ -309,6 +337,7 @@ async function createDestinationTasks({
   config,
   tokenStore,
   logger: loggerInstance,
+  syncId,
 }) {
   const tasks = [];
 
@@ -323,6 +352,7 @@ async function createDestinationTasks({
           ),
         "local backup failed",
         loggerInstance,
+        { syncId },
       ),
     );
   }
@@ -378,6 +408,7 @@ async function createDestinationTasks({
         () => uploadToDrive(buffer, driveOptions, loggerInstance),
         "google drive upload failed",
         loggerInstance,
+        { syncId },
       ),
     );
   }
@@ -400,6 +431,7 @@ async function createDestinationTasks({
           ),
         "s3 upload failed",
         loggerInstance,
+        { syncId },
       ),
     );
   }
@@ -439,6 +471,7 @@ async function createDestinationTasks({
         () => uploadToDropbox(buffer, dropboxOptions, loggerInstance),
         "dropbox upload failed",
         loggerInstance,
+        { syncId },
       ),
     );
   }
@@ -461,6 +494,7 @@ async function createDestinationTasks({
           ),
         "webdav upload failed",
         loggerInstance,
+        { syncId },
       ),
     );
   }

@@ -208,6 +208,15 @@ async function readLastBackupTimestamp(config) {
 async function buildMeta(config) {
   const cron = config?.schedule?.cron || null;
   const lastBackupTs = await readLastBackupTimestamp(config);
+  const syncTargets = Array.isArray(config?.actual?.syncIds)
+    ? config.actual.syncIds.filter((id) => id && id.length > 0)
+    : [];
+  const resolvedTargets =
+    syncTargets.length > 0
+      ? syncTargets
+      : config?.actual?.syncId
+        ? [config.actual.syncId]
+        : [];
 
   return {
     schedule: {
@@ -226,6 +235,7 @@ async function buildMeta(config) {
           iso: new Date(lastBackupTs * 1000).toISOString(),
         }
       : null,
+    targets: resolvedTargets,
   };
 }
 

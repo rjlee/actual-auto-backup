@@ -32,10 +32,27 @@ function loadConfig() {
   const serverUrl = process.env.ACTUAL_SERVER_URL;
   const password = process.env.ACTUAL_PASSWORD;
   const syncId = process.env.ACTUAL_SYNC_ID;
+  const backupSyncIdsRaw = process.env.BACKUP_SYNC_ID;
 
   invariant(serverUrl, "ACTUAL_SERVER_URL is required");
   invariant(password, "ACTUAL_PASSWORD is required");
-  invariant(syncId, "ACTUAL_SYNC_ID is required");
+  const syncSources = backupSyncIdsRaw || syncId;
+
+  invariant(syncSources, "BACKUP_SYNC_ID or ACTUAL_SYNC_ID is required");
+
+  const syncIds = syncSources
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  invariant(
+    syncIds.length > 0,
+    "BACKUP_SYNC_ID or ACTUAL_SYNC_ID must include at least one sync id",
+  );
+
+  const uniqueSyncIds = Array.from(new Set(syncIds));
+
+  const primarySyncId = uniqueSyncIds[0];
 
   const budgetDir = process.env.BUDGET_DIR || "/app/data/budget";
   const backupOutput = process.env.BACKUP_OUTPUT || "/app/data/backups";
@@ -48,7 +65,8 @@ function loadConfig() {
     actual: {
       serverUrl,
       password,
-      syncId,
+      syncId: primarySyncId,
+      syncIds: uniqueSyncIds,
       budgetDir: path.isAbsolute(budgetDir)
         ? budgetDir
         : path.join(process.cwd(), budgetDir),

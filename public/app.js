@@ -2,6 +2,7 @@ const destinationList = document.getElementById("destinationList");
 const alertBox = document.getElementById("alert");
 const backupBtn = document.getElementById("backupBtn");
 const scheduleInfo = document.getElementById("scheduleInfo");
+const syncTargetsInfo = document.getElementById("syncTargetsInfo");
 const retentionInfo = document.getElementById("retentionInfo");
 const lastBackupInfo = document.getElementById("lastBackupInfo");
 
@@ -36,6 +37,13 @@ function formatSchedule(scheduleMeta) {
 function formatRetention(retentionMeta) {
   if (!retentionMeta) return "Not configured";
   return retentionMeta.description || "Not configured";
+}
+
+function formatSyncTargets(targetsMeta) {
+  if (!Array.isArray(targetsMeta) || targetsMeta.length === 0) {
+    return "Not configured";
+  }
+  return targetsMeta.join(", ");
 }
 
 function formatRelativeTime(date) {
@@ -83,6 +91,9 @@ function formatLastBackup(lastMeta) {
 function updateOverview(meta = {}) {
   if (scheduleInfo) {
     scheduleInfo.textContent = formatSchedule(meta.schedule);
+  }
+  if (syncTargetsInfo) {
+    syncTargetsInfo.textContent = formatSyncTargets(meta.targets);
   }
   if (retentionInfo) {
     retentionInfo.textContent = formatRetention(meta.retention);

@@ -22,6 +22,8 @@ describe("server", () => {
       },
       actual: {
         budgetDir: path.join(tmpDir, "budget"),
+        syncId: "primary-sync",
+        syncIds: ["primary-sync", "secondary-sync"],
       },
       ui: { port: 4010, publicUrl: "http://localhost:4010" },
     };
@@ -35,5 +37,6 @@ describe("server", () => {
     expect(res.body.status.google.enabled).toBe(false);
     expect(res.body.meta.schedule.cron).toBe("0 0 * * 1");
     expect(res.body.meta.retention.description).toBeDefined();
+    expect(res.body.meta.targets).toEqual(["primary-sync", "secondary-sync"]);
   });
 });
