@@ -56,6 +56,7 @@ function getBudgetIdentifier(budget) {
   return (
     normalizeIdentifier(budget.budgetId) ??
     normalizeIdentifier(budget.cloudFileId) ??
+    normalizeIdentifier(budget.id) ??
     null
   );
 }
