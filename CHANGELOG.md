@@ -1,3 +1,10 @@
+## [1.1.8](https://github.com/rjlee/actual-auto-backup/compare/v1.1.7...v1.1.8) (2025-11-16)
+
+
+### Bug Fixes
+
+* fixing incorrect identifier usage ([ab44b1f](https://github.com/rjlee/actual-auto-backup/commit/ab44b1f0f092f1153a56e383f4402215ff9c5f97))
+
 ## [1.1.7](https://github.com/rjlee/actual-auto-backup/compare/v1.1.6...v1.1.7) (2025-11-16)
 
 
