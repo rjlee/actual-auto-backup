@@ -1,3 +1,10 @@
+## [1.1.6](https://github.com/rjlee/actual-auto-backup/compare/v1.1.5...v1.1.6) (2025-11-16)
+
+
+### Bug Fixes
+
+* fixing healthcheck ([c28d593](https://github.com/rjlee/actual-auto-backup/commit/c28d593a5e48d547115791a0419ec9e9e51f8763))
+
 ## [1.1.5](https://github.com/rjlee/actual-auto-backup/compare/v1.1.4...v1.1.5) (2025-11-11)
 
 
