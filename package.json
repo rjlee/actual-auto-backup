@@ -21,7 +21,7 @@
     "node": ">=22"
   },
   "dependencies": {
-    "@actual-app/api": "^26.5.0",
+    "@actual-app/api": "^26.5.2",
     "@aws-sdk/client-s3": "^3.1045.0",
     "adm-zip": "^0.5.17",
     "better-sqlite3": "^12.9.0",
