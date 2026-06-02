@@ -25,7 +25,7 @@
     "@aws-sdk/client-s3": "^3.1058.0",
     "adm-zip": "^0.5.17",
     "better-sqlite3": "^12.10.0",
-    "date-fns": "^4.3.0",
+    "date-fns": "^4.4.0",
     "dotenv": "^17.4.2",
     "dropbox": "^10.34.0",
     "googleapis": "^173.0.0",
