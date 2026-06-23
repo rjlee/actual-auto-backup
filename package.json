@@ -22,7 +22,7 @@
   },
   "dependencies": {
     "@actual-app/api": "^26.6.0",
-    "@aws-sdk/client-s3": "^3.1073.0",
+    "@aws-sdk/client-s3": "^3.1075.0",
     "adm-zip": "^0.5.17",
     "better-sqlite3": "^12.11.1",
     "date-fns": "^4.4.0",
